@@ -185,7 +185,7 @@ function reportEvidence(result) {
   if (evidenceLinks.childElementCount) details.append(evidenceLinks);
   if (sort.value === "recommended") {
     const score = formatDecimal.format(recommendedScore);
-    details.append(element("p", `Baseline Recommended score ${score} km equivalent: ${formatDecimal.format(scoreParts.travel)} travel + ${formatDecimal.format(scoreParts.matchPenalty)} service match penalty + ${formatDecimal.format(scoreParts.confidencePenalty)} confidence penalty.`));
+    details.append(element("p", `Baseline Recommended score ${score} km equivalent. The score adds ${formatDecimal.format(scoreParts.travel)} travel, ${formatDecimal.format(scoreParts.matchPenalty)} service match penalty, and ${formatDecimal.format(scoreParts.confidencePenalty)} confidence penalty.`));
   }
   if (projectedLoad) {
     const demand = projectedLoad.caseloadPredicted ? "Projected demand" : "Historical demand";
@@ -219,7 +219,9 @@ function resultCard(result, index) {
   if (place) headerText.append(element("p", place, "card-place"));
   header.append(rankElement, headerText);
   card.append(header);
-  if (facility.address) card.append(element("p", facility.address, "card-address"));
+  const address = (facility.address ?? "").split(",").map(part => part.trim())
+    .filter(part => part && !/^(null|none|nan|n\/a)$/i.test(part)).join(", ");
+  if (address) card.append(element("p", address, "card-address"));
 
   const metrics = element("dl", "", "card-metrics");
   metrics.append(
