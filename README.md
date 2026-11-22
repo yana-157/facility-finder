@@ -1,5 +1,7 @@
 # Facility Finder
 
+> **Frozen as of November 22, 2026.** The GitHub Pages demo uses the checked-in `data.json` snapshot. Searches run in the browser.
+
 Search for a care service by Indian PIN, city, district, or coordinates. Recommended orders facilities by straight-line distance, service match, and branch-specific evidence confidence. The routine-care load option compares published demand and modeled throughput when the first recommendation has a comparable nearby alternative. Results and map pins share the same order.
 
 The public app uses data already published by the Datathon team. Search inputs are evaluated in the browser. Databricks credentials and the underlying workspace tables stay in the workspace and build environment. [Published data and prototype](https://github.com/augustchu/datathon-F26/tree/restore-care-finder-map)
