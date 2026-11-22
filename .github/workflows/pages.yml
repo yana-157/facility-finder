@@ -1,0 +1,56 @@
+name: Publish Facility Finder
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sync_databricks:
+        description: Read the approved public data.json from Databricks before publishing
+        type: boolean
+        default: false
+
+concurrency:
+  group: facility-finder-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare the static site
+        run: |
+          mkdir _site
+          cp index.html styles.css app.js ranking.js map.js boundaries.json data.json _site/
+      - name: Read the approved Databricks snapshot
+        if: ${{ vars.DATABRICKS_PAGES_SNAPSHOT != '' || inputs.sync_databricks }}
+        env:
+          DATABRICKS_AUTH_TYPE: github-oidc
+          DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_PAGES_SNAPSHOT: ${{ vars.DATABRICKS_PAGES_SNAPSHOT }}
+        run: |
+          python -m pip install 'databricks-sdk>=0.73,<1'
+          python scripts/pull_databricks_snapshot.py _site/data.json
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: publish
