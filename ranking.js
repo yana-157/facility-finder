@@ -12,7 +12,7 @@ const PIN_PREFIX_RANGES = [[11, 28], [30, 34], [36, 53], [56, 64], [67, 85]];
 const COLLATOR = new Intl.Collator("en-IN");
 
 export const MAX_EXTRA_KM = 10;
-export const ROUTING_URL = "https://facility-finder-routing-yana.yanayana.chatgpt.site/api/routes";
+export const ROUTING_URL = "https://facility-finder-routing.facility-finder-routing.workers.dev/api/routes";
 const MAX_EXTRA_MINUTES = 15;
 const MINUTES_PER_KM_EQUIVALENT = 2;
 

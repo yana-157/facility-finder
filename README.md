@@ -4,7 +4,7 @@ The public site searches 9,076 facilities from the project's published release. 
 
 Search for a care service by Indian PIN, city, district, or coordinates. Recommended combines TravelTime's estimated weekday-morning drive with service match and branch-specific evidence. A successful search includes branches reached within three hours. When routing fails, the page labels its straight-line fallback. The routine-care load option compares published demand and modeled throughput when the first recommendation has a comparable nearby alternative.
 
-The browser resolves the origin and sends its coordinates, selected service, and snapshot checksum to the Facility Finder Routing backend. The server uses TravelTime secrets to request drives to the published branch coordinates. Route calculation time and the facility evidence date are displayed separately. [Published data and prototype](https://github.com/augustchu/datathon-F26/tree/restore-care-finder-map)
+The browser resolves the origin and sends its coordinates, selected service, and snapshot checksum to the public Facility Finder routing endpoint on Cloudflare Workers. The Worker keeps the TravelTime credentials server-side and returns driving times for reachable branches. Visitors can search without an account. Route calculation time and the facility evidence date are displayed separately. [Published data and prototype](https://github.com/augustchu/datathon-F26/tree/restore-care-finder-map)
 
 ## Preview and rebuild
 

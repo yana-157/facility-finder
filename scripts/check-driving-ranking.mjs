@@ -4,7 +4,7 @@ import {readFile} from "node:fs/promises";
 import {ROUTING_URL, parseRouteMatrix, rankFacilities, resolveOrigin} from "../ranking.js";
 
 // Use a public city centroid, with the same facility snapshot and ranking code as the page.
-const file = process.argv.slice(2).find(arg => arg !== "--private") || new URL("../data.json", import.meta.url);
+const file = process.argv[2] || new URL("../data.json", import.meta.url);
 const bytes = await readFile(file);
 const data = JSON.parse(bytes);
 const origin = resolveOrigin(data, {type: "city", query: "Jaipur", state: "Rajasthan"});
@@ -12,16 +12,7 @@ const service = "Dialysis";
 const snapshotSha256 = createHash("sha256").update(bytes).digest("hex");
 const siteOrigin = "https://yana-157.github.io";
 const headers = {Origin: siteOrigin};
-if (process.argv.includes("--private")) {
-  // A private Sites service token may be supplied through stdin before public rollout.
-  const parts = [];
-  for await (const part of process.stdin) parts.push(part);
-  const token = Buffer.concat(parts).toString("utf8").trim();
-  assert.ok(token, "Private routing verification requires a Sites service token.");
-  assert.equal(new URL(ROUTING_URL).origin, "https://facility-finder-routing-yana.yanayana.chatgpt.site");
-  headers["OAI-Sites-Authorization"] = "Bearer " + token;
-}
-const options = {redirect: "error", signal: AbortSignal.timeout(45000)};
+const options = {credentials: "omit", redirect: "error", signal: AbortSignal.timeout(45000)};
 const preflight = await fetch(ROUTING_URL, {
   ...options, method: "OPTIONS", headers: {...headers, "Access-Control-Request-Method": "POST",
     "Access-Control-Request-Headers": "content-type"},
