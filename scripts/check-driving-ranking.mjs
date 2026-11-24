@@ -4,7 +4,7 @@ import {readFile} from "node:fs/promises";
 import {ROUTING_URL, parseRouteMatrix, rankFacilities, resolveOrigin} from "../ranking.js";
 
 // Use a public city centroid, with the same facility snapshot and ranking code as the page.
-const file = process.argv[2] || new URL("../data.json", import.meta.url);
+const file = process.argv.slice(2).find(arg => arg !== "--private") || new URL("../data.json", import.meta.url);
 const bytes = await readFile(file);
 const data = JSON.parse(bytes);
 const origin = resolveOrigin(data, {type: "city", query: "Jaipur", state: "Rajasthan"});
@@ -34,7 +34,11 @@ const response = await fetch(ROUTING_URL, {
   ...options, method: "POST", headers: {...headers, "Content-Type": "application/json"},
   body: JSON.stringify({origin: {lat: origin.lat, lon: origin.lon}, service, snapshotSha256}),
 });
-assert.ok(response.ok, "The routing backend returned HTTP " + response.status);
+if (!response.ok) {
+  const problem = await response.json().catch(() => null);
+  const message = typeof problem?.error === "string" ? problem.error.slice(0,160) : "No routing error description.";
+  throw new Error(`The routing backend returned HTTP ${response.status}. ${message}`);
+}
 assert.equal(response.headers.get("Access-Control-Allow-Origin"), siteOrigin);
 const routeMatrix = parseRouteMatrix(await response.json(), data.matches[service]);
 assert.ok(new Set(routeMatrix.secondsByIndex.values()).size >= 2, "Need two distinct driving times for a ranking comparison.");
