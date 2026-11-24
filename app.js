@@ -1,4 +1,4 @@
-import { resolveOrigin, rankFacilities } from "./ranking.js";
+import { parseRouteMatrix, resolveOrigin, rankFacilities, ROUTING_URL } from "./ranking.js";
 import { facilityMap } from "./map.js";
 
 const get = id => document.getElementById(id);
@@ -17,6 +17,7 @@ const error = get("search-error");
 const list = get("result-list");
 const context = get("search-context");
 const loadStatus = get("load-status");
+const routeStatus = get("route-status");
 const controls = get("results-controls");
 const mapSelection = get("map-selection");
 
@@ -24,6 +25,9 @@ const formatNumber = new Intl.NumberFormat("en-IN");
 const formatDecimal = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 });
 const formatDate = new Intl.DateTimeFormat("en-GB", {
   year: "numeric", month: "long", day: "numeric", timeZone: "UTC",
+});
+const formatPublication = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "medium", timeStyle: "short", timeZone: "UTC",
 });
 const evidenceLabels = {
   corroborated: "Hospital source and independent corroboration",
@@ -34,8 +38,12 @@ const evidenceLabels = {
 };
 
 let data;
+let snapshotSha256;
 let origin;
 let activeResults = [];
+let routeLookup;
+let searchVersion = 0;
+let displayedRouting;
 
 function element(tag, text = "", className = "") {
   const node = document.createElement(tag);
@@ -96,7 +104,10 @@ function focusResult(index, fromCard = false) {
     card.dataset.active = card.id === `facility-${index + 1}`;
   }
   const title = element("strong", `${index + 1}. ${result.facility.name}`);
-  const distance = document.createTextNode(` · ${result.distanceKm.toFixed(1)} km straight line `);
+  const travel = result.driveMinutes == null
+    ? `${result.distanceKm.toFixed(1)} km straight line`
+    : `${formatDecimal.format(result.driveMinutes)} min drive`;
+  const distance = document.createTextNode(` · ${travel} `);
   const jump = element("button", "View option", "button-text");
   jump.type = "button";
   jump.addEventListener("click", () => scrollTo(get(`facility-${index + 1}`)));
@@ -130,12 +141,14 @@ function switchLocation() {
 
 function updateLoadControl() {
   const serviceInfo = data?.services.find(item => item.label === service.value);
-  const eligible = serviceInfo && !serviceInfo.urgent && severity.value === "routine";
+  const routine = serviceInfo && !serviceInfo.urgent && severity.value === "routine";
+  const eligible = routine && sort.value === "recommended";
   considerLoad.disabled = !eligible;
   if (!eligible) considerLoad.checked = false;
-  get("load-help").textContent = !serviceInfo || eligible
-    ? "Compare nearby routine-care options using published monthly demand and modeled throughput."
-    : "Projected load comparison is available for eligible routine searches.";
+  let help = "Turn on to compare monthly caseload and throughput at nearby facilities for routine care.";
+  if (serviceInfo && !routine) help = "Load balancing is available for routine, non-time-critical care.";
+  else if (sort.value !== "recommended") help = "Choose Recommended sorting to use load balancing.";
+  get("load-help").textContent = help;
 }
 
 function clearError() {
@@ -185,7 +198,8 @@ function reportEvidence(result) {
   if (evidenceLinks.childElementCount) details.append(evidenceLinks);
   if (sort.value === "recommended") {
     const score = formatDecimal.format(recommendedScore);
-    details.append(element("p", `Baseline Recommended score ${score} km equivalent. The score adds ${formatDecimal.format(scoreParts.travel)} travel, ${formatDecimal.format(scoreParts.matchPenalty)} service match penalty, and ${formatDecimal.format(scoreParts.confidencePenalty)} confidence penalty.`));
+    const unit = result.driveMinutes == null ? "km" : "min";
+    details.append(element("p", `Recommended score ${score} ${unit} equivalent. Travel contributes ${formatDecimal.format(scoreParts.travel)} ${unit}, the service match adds ${formatDecimal.format(scoreParts.matchPenalty)}, and evidence confidence adds ${formatDecimal.format(scoreParts.confidencePenalty)}.`));
   }
   if (projectedLoad) {
     const demand = projectedLoad.caseloadPredicted ? "Projected demand" : "Historical demand";
@@ -202,7 +216,7 @@ function reportEvidence(result) {
 }
 
 function resultCard(result, index) {
-  const { facility, assessment, distanceKm } = result;
+  const { facility, assessment, distanceKm, driveMinutes } = result;
   const rank = index + 1;
   const card = element("article", "", "result-card");
   card.id = "facility-" + rank;
@@ -225,7 +239,9 @@ function resultCard(result, index) {
 
   const metrics = element("dl", "", "card-metrics");
   metrics.append(
-    numberMetric("Straight-line distance", `${distanceKm.toFixed(1)} km`),
+    driveMinutes == null
+      ? numberMetric("Straight-line distance", `${distanceKm.toFixed(1)} km`)
+      : numberMetric("Estimated drive", `${formatDecimal.format(driveMinutes)} min`),
     numberMetric("Service confidence", `${assessment.confidence}/100`),
     numberMetric(...formatBeds(facility)),
   );
@@ -251,17 +267,29 @@ function resultCard(result, index) {
   return card;
 }
 
-function renderSearch() {
+function renderSearch(routeMatrix) {
   const result = rankFacilities(data, {
     service: service.value, origin, severity: severity.value, sort: sort.value,
-    considerLoad: considerLoad.checked, limit: Number(limit.value),
+    considerLoad: considerLoad.checked, limit: Number(limit.value), routeMatrix,
   });
   activeResults = result.results;
   const place = origin.label + (origin.approximate ? " (approximate)" : "");
   const count = activeResults.length;
-  context.textContent = count
-    ? `${count} option${count === 1 ? "" : "s"} for ${service.value} near ${place}.`
-    : `No options with service evidence for ${service.value} were found near ${place}.`;
+  if (count) {
+    context.textContent = `${count} option${count === 1 ? "" : "s"} for ${service.value} near ${place}.`;
+  } else if (routeMatrix) {
+    context.textContent = `No branches with evidence for ${service.value} had a drive within three hours of ${place} in this search.`;
+  } else {
+    context.textContent = `No options with service evidence for ${service.value} were found near ${place}.`;
+  }
+  get("travel-sort").textContent = routeMatrix ? "Fastest drive" : "Shortest straight-line distance";
+  if (routeMatrix) {
+    routeStatus.hidden = false;
+    routeStatus.replaceChildren(externalLink("TravelTime", "https://traveltime.com/"),
+      ` weekday-morning driving estimates · calculated ${formatPublication.format(routeMatrix.calculatedAt)} UTC.`);
+  } else {
+    status(routeStatus, "Driving times are unavailable. The travel measure for this search is straight-line distance.");
+  }
   controls.hidden = !count;
   const loadText = {
     sort: "Choose Recommended sorting to compare projected load.",
@@ -277,10 +305,51 @@ function renderSearch() {
   map.show(origin, activeResults.map(item => item.facility));
 }
 
-function search({ focus = true } = {}) {
+function fetchRoutes(location, serviceName) {
+  const {lat, lon} = location;
+  const body = JSON.stringify({origin: {lat, lon}, service: serviceName, snapshotSha256});
+  if (routeLookup?.body === body && routeLookup.expires > Date.now()) return routeLookup.promise;
+  const lookup = {body, expires: Date.now() + 30 * 60 * 1000};
+  lookup.promise = fetch(ROUTING_URL, {
+    method: "POST", headers: {"Content-Type": "application/json"}, body,
+    credentials: "omit", referrerPolicy: "no-referrer", cache: "no-store", signal: AbortSignal.timeout(35000),
+  }).then(async response => {
+    if (!response.ok) throw new Error("Routing unavailable.");
+    return parseRouteMatrix(await response.json(), data.matches[serviceName]);
+  }).catch(error => {
+    if (routeLookup === lookup) routeLookup = undefined;
+    throw error;
+  });
+  routeLookup = lookup;
+  return lookup.promise;
+}
+
+function clearResults(message) {
+  displayedRouting = undefined;
+  activeResults = [];
+  controls.hidden = true;
+  list.replaceChildren();
+  status(mapSelection, "");
+  status(loadStatus, "");
+  status(routeStatus, "");
+  context.textContent = message;
+  get("map-context").textContent = origin?.label ?? "India";
+  map.show(origin, []);
+}
+
+function invalidateSearch() {
+  if (!origin) return;
+  searchVersion++;
+  origin = undefined;
+  clearResults("Choose a service and enter a location to see options.");
+}
+
+async function search({ focus = true } = {}) {
   if (!data) return;
+  const version = ++searchVersion;
   clearError();
   if (!service.value) {
+    invalidateSearch();
     markError("Choose a service.", [service], focus);
     return;
   }
@@ -290,11 +359,21 @@ function search({ focus = true } = {}) {
       lat: latitude.value, lon: longitude.value,
     });
   } catch (cause) {
+    invalidateSearch();
     markError(cause.message, locationType.value === "coordinates" ? [latitude, longitude] : [query], focus);
     return;
   }
-  renderSearch();
+  clearResults(`Finding driving times for ${service.value} near ${origin.label}…`);
   if (focus) scrollTo(get("results-title"));
+  let matrix;
+  try {
+    matrix = await fetchRoutes(origin, service.value);
+  } catch {
+    matrix = null;
+  }
+  if (version !== searchVersion) return;
+  displayedRouting = matrix;
+  renderSearch(matrix);
 }
 
 form.addEventListener("submit", event => {
@@ -309,47 +388,47 @@ service.addEventListener("change", () => {
   if (origin) search({ focus: false });
 });
 locationType.addEventListener("change", () => {
+  invalidateSearch();
   query.value = "";
   state.value = "";
   switchLocation();
 });
 severity.addEventListener("change", () => {
   updateLoadControl();
-  if (origin) search({ focus: false });
+  if (displayedRouting !== undefined) renderSearch(displayedRouting);
 });
 for (const control of [sort, limit, considerLoad]) {
   control.addEventListener("change", () => {
-    if (origin) search({ focus: false });
+    if (control === sort) updateLoadControl();
+    if (displayedRouting !== undefined) renderSearch(displayedRouting);
   });
 }
-for (const input of [query, state, latitude, longitude]) input.addEventListener("input", clearError);
-
-get("example-button").addEventListener("click", () => {
-  service.value = "Dialysis";
-  severity.value = "routine";
-  locationType.value = "coordinates";
-  latitude.value = "31.833";
-  longitude.value = "77.018";
-  sort.value = "recommended";
-  updateLoadControl();
-  considerLoad.checked = false;
-  switchLocation();
-  search();
-});
+for (const input of [query, state, latitude, longitude]) {
+  input.addEventListener("input", () => {
+    clearError();
+    invalidateSearch();
+  });
+}
 
 async function start() {
   try {
     const response = await fetch(new URL("./data.json", import.meta.url), { cache: "no-cache" });
     if (!response.ok) throw new Error("The facility snapshot could not be loaded.");
-    data = await response.json();
+    const bytes = await response.arrayBuffer();
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    snapshotSha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+    data = JSON.parse(new TextDecoder().decode(bytes));
     if (!Array.isArray(data.services) || !Array.isArray(data.facilities)) throw new Error("The snapshot is incomplete.");
     service.replaceChildren(new Option("Choose a service", ""), ...data.services.map(item => new Option(item.label, item.label)));
     get("snapshot-count").textContent = `${formatNumber.format(data.facilities.length)} facility records`;
-    const sourceName = data.sourceName || "Published GitHub snapshot";
     const published = new Date(data.publishedAt);
     get("snapshot-date").textContent = Number.isNaN(published.getTime())
-      ? sourceName
-      : `${sourceName} · ${formatDate.format(published)}`;
+      ? "Publication date unavailable"
+      : `Facility data published ${formatPublication.format(published)} UTC`;
+    const assessed = new Date(data.classifiedAsOf || "");
+    get("evidence-date").textContent = Number.isNaN(assessed.getTime())
+      ? "Evidence assessment date unavailable"
+      : `Service evidence assessed ${formatDate.format(assessed)}`;
     const href = safeLink(data.sourceUrl);
     if (href) get("source-link").href = href;
     get("search-fields").disabled = false;

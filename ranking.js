@@ -12,6 +12,27 @@ const PIN_PREFIX_RANGES = [[11, 28], [30, 34], [36, 53], [56, 64], [67, 85]];
 const COLLATOR = new Intl.Collator("en-IN");
 
 export const MAX_EXTRA_KM = 10;
+export const ROUTING_URL = "https://facility-finder-routing-yana.yanayana.chatgpt.site/api/routes";
+const MAX_EXTRA_MINUTES = 15;
+const MINUTES_PER_KM_EQUIVALENT = 2;
+
+export function parseRouteMatrix(payload, assessments) {
+  const calculatedAt = new Date(payload?.calculatedAt);
+  if (!Array.isArray(payload?.routes) || typeof payload.calculatedAt !== "string"
+      || !Number.isFinite(calculatedAt.getTime())) {
+    throw new Error("Invalid routing response.");
+  }
+  const expected = new Set(assessments.map(row => row.index));
+  const secondsByIndex = new Map();
+  for (const {index, seconds} of payload.routes) {
+    if (!expected.has(index) || secondsByIndex.has(index) || !Number.isFinite(seconds)
+        || seconds < 0 || seconds > 10800) {
+      throw new Error("Invalid facility driving time.");
+    }
+    secondsByIndex.set(index, seconds);
+  }
+  return {secondsByIndex, calculatedAt};
+}
 
 function cleanText(value) {
   return String(value ?? "").normalize("NFKC").trim().replace(/\s+/gu, " ");
@@ -112,11 +133,12 @@ function confidencePenalty(confidence) {
 }
 
 function compareRecommended(left, right) {
-  return left.recommendedScore - right.recommendedScore || left.distanceKm - right.distanceKm;
+  return left.recommendedScore - right.recommendedScore || left.scoreParts.travel - right.scoreParts.travel
+    || left.distanceKm - right.distanceKm;
 }
 
 const OTHER_SORTS = {
-  distance: (left, right) => left.distanceKm - right.distanceKm,
+  distance: (left, right) => left.scoreParts.travel - right.scoreParts.travel,
   confidence: (left, right) => right.assessment.confidence - left.assessment.confidence,
   beds: (left, right) => (right.facility.beds ?? -1) - (left.facility.beds ?? -1),
   name: (left, right) => COLLATOR.compare(left.facility.name, right.facility.name),
@@ -165,20 +187,22 @@ function compareProjectedLoad(ranked, projections, service) {
   const baseline = ranked[0];
   const anchor = projectionFor(baseline);
   if (!anchor) return 0;
+  const detourLimit = baseline.driveMinutes == null ? MAX_EXTRA_KM : MAX_EXTRA_MINUTES;
 
   const comparable = new Set();
   let winner = 0;
   let winningScore = Infinity;
   for (const [index, result] of ranked.entries()) {
     const extraTravelKm = Math.max(0, result.distanceKm - baseline.distanceKm);
-    if (extraTravelKm > MAX_EXTRA_KM || result.assessment.kind !== baseline.assessment.kind) continue;
+    const extraTravel = Math.max(0, result.scoreParts.travel - baseline.scoreParts.travel);
+    if (extraTravelKm > MAX_EXTRA_KM || extraTravel > detourLimit || result.assessment.kind !== baseline.assessment.kind) continue;
     const projection = projectionFor(result);
     if (!projection) continue;
     const {row, caseload, capacity} = projection;
     if (["unit", "scope", "period"].some(field => row[field] !== anchor.row[field])) continue;
     if (comparable.has(row.projection_facility_id)) continue;
     const pressure = 1 - 1 / (1 + caseload / capacity);
-    const comparisonScore = (extraTravelKm / MAX_EXTRA_KM + pressure) / 2;
+    const comparisonScore = (extraTravel / detourLimit + pressure) / 2;
     comparable.add(row.projection_facility_id);
     result.projectedLoad = {
       caseload, capacity, pressure, comparisonScore, extraTravelKm,
@@ -203,8 +227,11 @@ function compareProjectedLoad(ranked, projections, service) {
   return comparable.size;
 }
 
-export function rankFacilities(data, {service, origin, sort = "recommended", severity = "routine", considerLoad = false, limit = 5}) {
+export function rankFacilities(data, {
+  service, origin, sort = "recommended", severity = "routine", considerLoad = false, limit = 5, routeMatrix = null,
+}) {
   const ranked = [];
+  const penaltyScale = routeMatrix ? MINUTES_PER_KM_EQUIVALENT : 1;
   const assessments = Object.hasOwn(data.matches, service) ? data.matches[service] : [];
   for (const assessment of assessments) {
     const facility = data.facilities[assessment.index];
@@ -212,15 +239,19 @@ export function rankFacilities(data, {service, origin, sort = "recommended", sev
     if (assessment.kind !== "mention" && !EXACT_EVIDENCE.has(assessment.kind)) continue;
     if (!Number.isFinite(assessment.confidence) || assessment.confidence <= 0) continue;
     if (assessment.match !== 40 && assessment.match !== 100) continue;
+    if (routeMatrix && !routeMatrix.secondsByIndex.has(assessment.index)) continue;
     const distanceKm = haversineKm(origin, facility);
-    const matchPenalty = MATCH_PENALTY_MAX_KM * (1 - assessment.match / 100);
-    const confidenceCost = confidencePenalty(assessment.confidence);
+    const driveMinutes = routeMatrix ? routeMatrix.secondsByIndex.get(assessment.index) / 60 : null;
+    const travel = driveMinutes ?? distanceKm;
+    const matchPenalty = MATCH_PENALTY_MAX_KM * (1 - assessment.match / 100) * penaltyScale;
+    const confidenceCost = confidencePenalty(assessment.confidence) * penaltyScale;
     ranked.push({
       facility,
       assessment,
       distanceKm,
-      scoreParts: {travel: distanceKm, matchPenalty, confidencePenalty: confidenceCost},
-      recommendedScore: distanceKm + matchPenalty + confidenceCost,
+      driveMinutes,
+      scoreParts: {travel, matchPenalty, confidencePenalty: confidenceCost},
+      recommendedScore: travel + matchPenalty + confidenceCost,
     });
   }
   const compare = Object.hasOwn(OTHER_SORTS, sort) ? OTHER_SORTS[sort] : compareRecommended;

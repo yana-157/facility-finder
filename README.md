@@ -1,10 +1,10 @@
 # Facility Finder
 
-> **Frozen as of November 22, 2026.** The GitHub Pages demo uses the checked-in `data.json` snapshot. Searches run in the browser.
+The public site searches 9,076 facilities from the project's published release. The release is dated November 22, 2026 at 06:32 UTC. The team assessed service evidence for 18 services as of November 22. Both dates are recorded in `data.json`. Result cards distinguish reported bed counts from model estimates.
 
-Search for a care service by Indian PIN, city, district, or coordinates. Recommended orders facilities by straight-line distance, service match, and branch-specific evidence confidence. The routine-care load option compares published demand and modeled throughput when the first recommendation has a comparable nearby alternative. Results and map pins share the same order.
+Search for a care service by Indian PIN, city, district, or coordinates. Recommended combines TravelTime's estimated weekday-morning drive with service match and branch-specific evidence. A successful search includes branches reached within three hours. When routing fails, the page labels its straight-line fallback. The routine-care load option compares published demand and modeled throughput when the first recommendation has a comparable nearby alternative.
 
-The public app uses data already published by the Datathon team. Search inputs are evaluated in the browser. Databricks credentials and the underlying workspace tables stay in the workspace and build environment. [Published data and prototype](https://github.com/augustchu/datathon-F26/tree/restore-care-finder-map)
+The browser resolves the origin and sends its coordinates, selected service, and snapshot checksum to the Facility Finder Routing backend. The server uses TravelTime secrets to request drives to the published branch coordinates. Route calculation time and the facility evidence date are displayed separately. [Published data and prototype](https://github.com/augustchu/datathon-F26/tree/restore-care-finder-map)
 
 ## Preview and rebuild
 
@@ -22,4 +22,4 @@ Databricks can prepare the publication-ready `data.json` feed and write it to a 
 2. Set the Actions repository variables `DATABRICKS_HOST` to the workspace URL, `DATABRICKS_CLIENT_ID` to the service principal application ID, and `DATABRICKS_PAGES_SNAPSHOT` to the approved `/Volumes/<catalog>/<schema>/<volume>/data.json` path.
 3. After the Databricks job finishes writing the feed, run **Publish Facility Finder** on `main` with **sync_databricks** enabled. Subsequent runs use the configured Databricks feed. A failed read leaves the previous Pages deployment in service. [GitHub Pages workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
 
-This updates the public snapshot on deployment. Per-search Databricks queries or live changes between deployments require an authenticated server API.
+When updating the snapshot, rebuild the routing backend's destination index from the exact same file. Pages runs the unit tests and a live Jaipur dialysis route check against the artifact before deploying. Run `node scripts/check-driving-ranking.mjs data.json` to repeat the check against the public routing backend.

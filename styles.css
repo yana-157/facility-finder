@@ -77,11 +77,12 @@ h3 { font-size: 1rem; font-weight: 750; }
 .field select:focus, .field input:focus { border-color: var(--accent); }
 .field input[aria-invalid="true"] { border-color: var(--warn); }
 .field-error { border-left: 2px solid var(--warn); padding-left: 10px; color: var(--warn); font-size: .84rem; }
+.route-privacy { font-size: .78rem; color: var(--muted); }
 .load-control { background: #f1f6f0; border: 1px solid #e2ece2; border-radius: 11px; padding: 11px 12px; }
 .load-control p { color: var(--muted); font-size: .77rem; margin: 3px 0 0 46px; }
 .toggle-label { position: relative; display: flex; align-items: center; gap: 10px; width: max-content; max-width: 100%; cursor: pointer; font-size: .85rem; font-weight: 750; }
 .toggle { position: absolute; width: 36px; height: 22px; opacity: 0; inset: 0 auto 0 0; margin: 0; }
-.toggle-track { position: relative; width: 36px; height: 21px; flex: none; border-radius: 25px; background: #64796a; }
+.toggle-track { position: relative; width: 36px; height: 21px; flex: none; border-radius: 25px; background: #64796a; pointer-events: none; }
 .toggle-track::after { content: ""; position: absolute; top: 3px; left: 3px; width: 15px; height: 15px; background: white; border-radius: 50%; transition: transform .17s; }
 .toggle:checked + .toggle-track { background: var(--accent); }
 .toggle:checked + .toggle-track::after { transform: translateX(15px); }
@@ -100,7 +101,6 @@ h3 { font-size: 1rem; font-weight: 750; }
 .button-subtle { min-height: 36px; padding: 6px 10px; color: var(--accent); background: #f4f8f3; border-color: #d3e3d6; font-size: .76rem; }
 .button-subtle:hover:not(:disabled) { background: var(--accent-soft); }
 .button-text { border: 0; color: var(--accent); background: none; font-size: .79rem; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
-.button-text.example { justify-self: center; padding: 1px 4px 3px; }
 
 .map-panel { grid-column: 2; grid-row: 1 / span 2; position: sticky; top: 16px; overflow: hidden; }
 .map-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 18px; }

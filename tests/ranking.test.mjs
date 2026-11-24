@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {haversineKm, rankFacilities, resolveOrigin} from "../ranking.js";
+import {haversineKm, parseRouteMatrix, rankFacilities, resolveOrigin} from "../ranking.js";
 
 const origin = {lat: 18.52, lon: 73.85};
 
@@ -31,6 +31,49 @@ function fixture() {
 function search(data, options = {}) {
   return rankFacilities(data, {service: "Dialysis", origin, ...options});
 }
+
+function matrix(data, routes) {
+  return parseRouteMatrix({routes, calculatedAt: "2026-11-24T12:00:00Z"}, data.matches.Dialysis);
+}
+
+test("driving minutes reverse the distance order and exclude omitted branches for every sort", () => {
+  const data = fixture();
+  const routeMatrix = matrix(data, [{index: 0, seconds: 1800}, {index: 1, seconds: 600}]);
+  assert.equal(search(data).results[0].facility.name, "Nearest");
+  const routed = search(data, {routeMatrix}).results;
+  assert.deepEqual(routed.map(row => row.facility.name), ["Nearby", "Nearest"]);
+  assert.deepEqual(routed.map(row => row.driveMinutes), [10, 30]);
+  assert.equal(search(data, {routeMatrix, sort: "beds"}).results.length, 2);
+  assert.equal(search(data, {routeMatrix: matrix(data, [])}).results.length, 0);
+  data.matches.Dialysis[1] = {...data.matches.Dialysis[1], confidence: 25, kind: "mention", match: 40};
+  const [fastest] = search(data, {routeMatrix, sort: "distance"}).results;
+  assert.equal(fastest.facility.name, "Nearby");
+  assert.equal(fastest.scoreParts.matchPenalty, 6);
+  assert.ok(fastest.scoreParts.confidencePenalty > 59.8);
+  assert.equal(search(data, {routeMatrix}).results[0].facility.name, "Nearest");
+});
+
+test("routing preserves zero-second trips and rejects malformed or mismatched route rows", () => {
+  const data = fixture();
+  assert.equal(search(data, {routeMatrix: matrix(data, [{index: 0, seconds: 0}])}).results[0].driveMinutes, 0);
+  for (const routes of [[{index: 0, seconds: -1}], [{index: 0, seconds: 10801}],
+    [{index: 30, seconds: 5}], [{index: 0, seconds: 1}, {index: 0, seconds: 2}]]) {
+    assert.throws(() => matrix(data, routes), /Invalid facility driving time/);
+  }
+  assert.throws(() => parseRouteMatrix({routes: []}, data.matches.Dialysis), /Invalid routing response/);
+});
+
+test("routed load comparison enforces both the driving-time and geographic detour limits", () => {
+  const data = fixture();
+  const searchWithDetour = seconds => search(data, {considerLoad: true,
+    routeMatrix: matrix(data, [{index: 0, seconds: 600}, {index: 1, seconds}, {index: 2, seconds: 610}])});
+  assert.equal(searchWithDetour(1501).loadStatus, "unavailable");
+  const changed = searchWithDetour(660);
+  assert.equal(changed.results[0].facility.name, "Nearby");
+  assert.equal(changed.comparisonCount, 2);
+  const load = changed.results[0].projectedLoad;
+  assert.equal(load.comparisonScore, (1 / 15 + load.pressure) / 2);
+});
 
 test("uses distance and the published service-evidence penalties", () => {
   const data = fixture();

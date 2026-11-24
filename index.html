@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Compare health facilities in India by service evidence and distance using a published facility dataset.">
+  <meta name="description" content="Compare health facilities in India by estimated driving time and published evidence for the service you need.">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>Facility Finder</title>
   <link rel="stylesheet" href="./styles.css">
@@ -25,12 +25,13 @@
     <section class="intro" aria-labelledby="page-title">
       <div>
         <h1 id="page-title">Find the right care</h1>
-        <p>Compare facilities in India by travel distance and evidence for the service you need.</p>
+        <p>Compare facilities in India by estimated driving time and evidence for the service you need.</p>
       </div>
       <aside class="snapshot" aria-label="Data coverage">
         <p class="snapshot-label">Published facility data</p>
         <p class="snapshot-count" id="snapshot-count">Loading facilities…</p>
         <p class="snapshot-date" id="snapshot-date"></p>
+        <p class="snapshot-date" id="evidence-date"></p>
       </aside>
     </section>
 
@@ -90,15 +91,15 @@
 
             <div class="load-control">
               <label class="toggle-label" for="projected-load">
-                <input class="toggle" id="projected-load" name="projected-load" type="checkbox" aria-describedby="load-help">
+                <input class="toggle" id="projected-load" name="projected-load" type="checkbox" role="switch" autocomplete="off" aria-describedby="load-help">
                 <span class="toggle-track" aria-hidden="true"></span>
-                <span>Consider projected load</span>
+                <span>Balance by projected caseload</span>
               </label>
-              <p id="load-help">Compare nearby routine-care options using published monthly demand and modeled throughput.</p>
+              <p id="load-help">Turn on to compare monthly caseload and throughput at nearby facilities for routine care.</p>
             </div>
             <p class="field-error" id="search-error" role="alert" hidden></p>
-            <button class="button button-primary" id="search-button" type="submit">Find facilities <span aria-hidden="true">→</span></button>
-            <button class="button-text example" id="example-button" type="button">Try the Himachal Pradesh dialysis example</button>
+            <p class="route-privacy" id="route-privacy">A search sends your selected service and starting coordinates to our routing server. TravelTime receives the coordinates of the origin and candidate facilities.</p>
+            <button class="button button-primary" id="search-button" type="submit" aria-describedby="route-privacy">Find facilities <span aria-hidden="true">→</span></button>
           </fieldset>
         </form>
       </section>
@@ -124,7 +125,7 @@
           <span><span class="legend-dot legend-origin" aria-hidden="true"></span>Your location</span>
           <span><span class="legend-dot legend-facility" aria-hidden="true"></span>Facility rank</span>
         </div>
-        <p class="map-attribution" id="map-privacy">Searches run in your browser. The optional street map loads tiles from OpenStreetMap.</p>
+        <p class="map-attribution" id="map-privacy">The optional street map loads tiles from OpenStreetMap.</p>
       </section>
 
       <section class="results-panel" id="results" aria-labelledby="results-title">
@@ -138,7 +139,7 @@
               <label for="sort">Sort by</label>
               <select id="sort">
                 <option value="recommended">Recommended</option>
-                <option value="distance">Nearest first</option>
+                <option value="distance" id="travel-sort">Fastest drive</option>
                 <option value="confidence">Service confidence</option>
                 <option value="beds">Beds</option>
                 <option value="name">Name</option>
@@ -153,6 +154,7 @@
             </div>
           </div>
         </div>
+        <p id="route-status" class="load-status" role="status" hidden></p>
         <p id="load-status" class="load-status" role="status" hidden></p>
         <div id="result-list" class="result-list"></div>
       </section>
@@ -163,15 +165,15 @@
       <div class="methods-grid">
         <div>
           <h3>Recommended ranking</h3>
-          <p>The score adds straight-line distance to penalties for service match and service confidence. Confidence combines service evidence out of 80 and branch identity out of 20. Lower scores rank first.</p>
+          <p>TravelTime estimates typical weekday-morning drives of up to three hours. Recommended adds penalties for service match and evidence confidence to the driving minutes. If routing is unavailable, the search labels and uses straight-line distance.</p>
         </div>
         <div>
           <h3>Projected load</h3>
-          <p>For eligible routine searches, the optional comparison uses modeled demand and throughput for nearby branches with comparable evidence. A lower-pressure facility can move up when the extra distance is small.</p>
+          <p>Load balancing is off by default. Turn it on to compare nearby branches with similar evidence for the same service. The calculation gives equal weight to extra travel and workload pressure, using monthly caseload and modeled throughput. It can change which branch ranks first.</p>
         </div>
         <div>
           <h3>Published snapshot</h3>
-          <p>This page reads a published dataset. Call the facility to verify the service, exact branch, and current availability before traveling.</p>
+          <p>Service evidence and reported or estimated bed counts come from the dated facility release. Call the branch to confirm current availability before traveling.</p>
         </div>
       </div>
       <div class="methods-links">
