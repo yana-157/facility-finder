@@ -1,9 +1,10 @@
-import { parseRouteMatrix, resolveOrigin, rankFacilities, ROUTING_URL } from "./ranking.js";
+import { parseRouteMatrix, resolveOrigin, rankFacilities, ROUTING_URL, TRAVEL_MODES } from "./ranking.js";
 import { facilityMap } from "./map.js";
 
 const get = id => document.getElementById(id);
 const form = get("finder-form");
 const service = get("service");
+const travelMode = get("travel-mode");
 const locationType = get("location-type");
 const severity = get("severity");
 const query = get("query");
@@ -18,6 +19,7 @@ const list = get("result-list");
 const context = get("search-context");
 const loadStatus = get("load-status");
 const routeStatus = get("route-status");
+const drivingAlternatives = get("driving-alternatives");
 const controls = get("results-controls");
 const mapSelection = get("map-selection");
 
@@ -41,7 +43,7 @@ let data;
 let snapshotSha256;
 let origin;
 let activeResults = [];
-let routeLookup;
+const routeLookups = new Map();
 let searchVersion = 0;
 let displayedRouting;
 
@@ -104,9 +106,9 @@ function focusResult(index, fromCard = false) {
     card.dataset.active = card.id === `facility-${index + 1}`;
   }
   const title = element("strong", `${index + 1}. ${result.facility.name}`);
-  const travel = result.driveMinutes == null
+  const travel = result.travelMinutes == null
     ? `${result.distanceKm.toFixed(1)} km straight line`
-    : `${formatDecimal.format(result.driveMinutes)} min drive`;
+    : `${formatDecimal.format(result.travelMinutes)} min · ${TRAVEL_MODES[travelMode.value].label}`;
   const distance = document.createTextNode(` · ${travel} `);
   const jump = element("button", "View option", "button-text");
   jump.type = "button";
@@ -198,7 +200,7 @@ function reportEvidence(result) {
   if (evidenceLinks.childElementCount) details.append(evidenceLinks);
   if (sort.value === "recommended") {
     const score = formatDecimal.format(recommendedScore);
-    const unit = result.driveMinutes == null ? "km" : "min";
+    const unit = result.travelMinutes == null ? "km" : "min";
     details.append(element("p", `Recommended score ${score} ${unit} equivalent. Travel contributes ${formatDecimal.format(scoreParts.travel)} ${unit}, the service match adds ${formatDecimal.format(scoreParts.matchPenalty)}, and evidence confidence adds ${formatDecimal.format(scoreParts.confidencePenalty)}.`));
   }
   if (projectedLoad) {
@@ -216,7 +218,8 @@ function reportEvidence(result) {
 }
 
 function resultCard(result, index) {
-  const { facility, assessment, distanceKm, driveMinutes } = result;
+  const { facility, assessment, distanceKm, travelMinutes } = result;
+  const mode = TRAVEL_MODES[travelMode.value];
   const rank = index + 1;
   const card = element("article", "", "result-card");
   card.id = "facility-" + rank;
@@ -239,9 +242,9 @@ function resultCard(result, index) {
 
   const metrics = element("dl", "", "card-metrics");
   metrics.append(
-    driveMinutes == null
+    travelMinutes == null
       ? numberMetric("Straight-line distance", `${distanceKm.toFixed(1)} km`)
-      : numberMetric("Estimated drive", `${formatDecimal.format(driveMinutes)} min`),
+      : numberMetric(`${mode.label} time`, `${formatDecimal.format(travelMinutes)} min`),
     numberMetric("Service confidence", `${assessment.confidence}/100`),
     numberMetric(...formatBeds(facility)),
   );
@@ -254,9 +257,11 @@ function resultCard(result, index) {
   locate.type = "button";
   locate.addEventListener("click", () => focusResult(index, true));
   links.append(locate);
-  const directions = new URL("https://www.google.com/maps/search/");
+  const directions = new URL("https://www.google.com/maps/dir/");
   directions.searchParams.set("api", "1");
-  directions.searchParams.set("query", `${facility.lat},${facility.lon}`);
+  directions.searchParams.set("origin", `${origin.lat},${origin.lon}`);
+  directions.searchParams.set("destination", `${facility.lat},${facility.lon}`);
+  directions.searchParams.set("travelmode", mode.mapsMode);
   appendLinks(links, [["Directions", directions.href], ["Facility website", facility.website]]);
   card.append(links);
   if (!call) card.append(element("p", "Phone unavailable in this snapshot.", "card-note"));
@@ -274,40 +279,44 @@ function renderSearch(routeMatrix) {
   });
   activeResults = result.results;
   const place = origin.label + (origin.approximate ? " (approximate)" : "");
+  const mode = TRAVEL_MODES[travelMode.value];
   const count = activeResults.length;
   if (count) {
     context.textContent = `${count} option${count === 1 ? "" : "s"} for ${service.value} near ${place}.`;
   } else if (routeMatrix) {
-    context.textContent = `No branches with evidence for ${service.value} had a drive within three hours of ${place} in this search.`;
+    context.textContent = `No ${mode.label.toLowerCase()} estimates within three hours were available for ${service.value} near ${place}.`;
+    if (travelMode.value === "public_transport") context.textContent += " TravelTime covers only some public transport routes in India.";
   } else {
     context.textContent = `No options with service evidence for ${service.value} were found near ${place}.`;
   }
-  get("travel-sort").textContent = routeMatrix ? "Fastest drive" : "Shortest straight-line distance";
+  get("travel-sort").textContent = routeMatrix ? `Fastest ${mode.trip}` : "Shortest straight-line distance";
   if (routeMatrix) {
     routeStatus.hidden = false;
     routeStatus.replaceChildren(externalLink("TravelTime", "https://traveltime.com/"),
-      ` weekday-morning driving estimates · calculated ${formatPublication.format(routeMatrix.calculatedAt)} UTC.`);
+      ` weekday-morning ${mode.label.toLowerCase()} estimates · calculated ${formatPublication.format(routeMatrix.calculatedAt)} UTC.`);
   } else {
-    status(routeStatus, "Driving times are unavailable. The travel measure for this search is straight-line distance.");
+    status(routeStatus, `${mode.label} estimates are unavailable. These results use straight-line distance.`);
   }
   controls.hidden = !count;
+  drivingAlternatives.hidden = travelMode.value === "driving" || Boolean(routeMatrix && count);
   const loadText = {
     sort: "Choose Recommended sorting to compare projected load.",
     unavailable: "The first recommendation has no comparable nearby alternative with usable projected load. Showing the baseline order.",
     compared: `Compared projected monthly load for ${result.comparisonCount} nearby facilities. The first recommendation stayed the same.`,
     changed: `Compared projected monthly load for ${result.comparisonCount} nearby facilities. ${activeResults[0]?.facility.name} moved to first.`,
   };
-  status(loadStatus, loadText[result.loadStatus] ?? "");
+  status(loadStatus, count ? loadText[result.loadStatus] ?? "" : "");
   list.replaceChildren(...activeResults.map(resultCard));
-  if (!count) list.append(element("p", "Try a nearby city or a different service.", "empty-card"));
+  if (!count) list.append(element("p", "Try another travel mode, service or starting location.", "empty-card"));
   get("map-context").textContent = place;
   status(mapSelection, "");
   map.show(origin, activeResults.map(item => item.facility));
 }
 
-function fetchRoutes(location, serviceName) {
+function fetchRoutes(location, serviceName, selectedMode) {
   const {lat, lon} = location;
-  const body = JSON.stringify({origin: {lat, lon}, service: serviceName, snapshotSha256});
+  const body = JSON.stringify({origin: {lat, lon}, service: serviceName, travelMode: selectedMode, snapshotSha256});
+  const routeLookup = routeLookups.get(selectedMode);
   if (routeLookup?.body === body && routeLookup.expires > Date.now()) return routeLookup.promise;
   const lookup = {body, expires: Date.now() + 30 * 60 * 1000};
   lookup.promise = fetch(ROUTING_URL, {
@@ -315,12 +324,12 @@ function fetchRoutes(location, serviceName) {
     credentials: "omit", referrerPolicy: "no-referrer", cache: "no-store", signal: AbortSignal.timeout(35000),
   }).then(async response => {
     if (!response.ok) throw new Error("Routing unavailable.");
-    return parseRouteMatrix(await response.json(), data.matches[serviceName]);
+    return parseRouteMatrix(await response.json(), data.matches[serviceName], selectedMode);
   }).catch(error => {
-    if (routeLookup === lookup) routeLookup = undefined;
+    if (routeLookups.get(selectedMode) === lookup) routeLookups.delete(selectedMode);
     throw error;
   });
-  routeLookup = lookup;
+  routeLookups.set(selectedMode, lookup);
   return lookup.promise;
 }
 
@@ -328,6 +337,7 @@ function clearResults(message) {
   displayedRouting = undefined;
   activeResults = [];
   controls.hidden = true;
+  drivingAlternatives.hidden = true;
   list.replaceChildren();
   status(mapSelection, "");
   status(loadStatus, "");
@@ -363,11 +373,12 @@ async function search({ focus = true } = {}) {
     markError(cause.message, locationType.value === "coordinates" ? [latitude, longitude] : [query], focus);
     return;
   }
-  clearResults(`Finding driving times for ${service.value} near ${origin.label}…`);
+  const selectedMode = travelMode.value;
+  clearResults(`Finding ${TRAVEL_MODES[selectedMode].label.toLowerCase()} times for ${service.value} near ${origin.label}…`);
   if (focus) scrollTo(get("results-title"));
   let matrix;
   try {
-    matrix = await fetchRoutes(origin, service.value);
+    matrix = await fetchRoutes(origin, service.value, selectedMode);
   } catch {
     matrix = null;
   }
@@ -386,6 +397,13 @@ service.addEventListener("change", () => {
   }
   updateLoadControl();
   if (origin) search({ focus: false });
+});
+travelMode.addEventListener("change", () => {
+  if (origin) search({ focus: false });
+});
+drivingAlternatives.addEventListener("click", () => {
+  travelMode.value = "driving";
+  search();
 });
 locationType.addEventListener("change", () => {
   invalidateSearch();

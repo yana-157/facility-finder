@@ -13,13 +13,20 @@ const COLLATOR = new Intl.Collator("en-IN");
 
 export const MAX_EXTRA_KM = 10;
 export const ROUTING_URL = "https://facility-finder-routing.facility-finder-routing.workers.dev/api/routes";
+export const TRAVEL_MODES = {
+  driving: {label: "Driving", trip: "drive", mapsMode: "driving"},
+  walking: {label: "Walking", trip: "walk", mapsMode: "walking"},
+  cycling: {label: "Cycling", trip: "bike ride", mapsMode: "bicycling"},
+  public_transport: {label: "Public transport", trip: "public transport trip", mapsMode: "transit"},
+};
 const MAX_EXTRA_MINUTES = 15;
 const MINUTES_PER_KM_EQUIVALENT = 2;
 
-export function parseRouteMatrix(payload, assessments) {
+export function parseRouteMatrix(payload, assessments, travelMode = "driving") {
   const calculatedAt = new Date(payload?.calculatedAt);
   if (!Array.isArray(payload?.routes) || typeof payload.calculatedAt !== "string"
-      || !Number.isFinite(calculatedAt.getTime())) {
+      || !Number.isFinite(calculatedAt.getTime()) || !Object.hasOwn(TRAVEL_MODES, travelMode)
+      || payload.travelMode !== travelMode) {
     throw new Error("Invalid routing response.");
   }
   const expected = new Set(assessments.map(row => row.index));
@@ -27,11 +34,11 @@ export function parseRouteMatrix(payload, assessments) {
   for (const {index, seconds} of payload.routes) {
     if (!expected.has(index) || secondsByIndex.has(index) || !Number.isFinite(seconds)
         || seconds < 0 || seconds > 10800) {
-      throw new Error("Invalid facility driving time.");
+      throw new Error("Invalid facility travel time.");
     }
     secondsByIndex.set(index, seconds);
   }
-  return {secondsByIndex, calculatedAt};
+  return {secondsByIndex, calculatedAt, travelMode};
 }
 
 function cleanText(value) {
@@ -187,7 +194,7 @@ function compareProjectedLoad(ranked, projections, service) {
   const baseline = ranked[0];
   const anchor = projectionFor(baseline);
   if (!anchor) return 0;
-  const detourLimit = baseline.driveMinutes == null ? MAX_EXTRA_KM : MAX_EXTRA_MINUTES;
+  const detourLimit = baseline.travelMinutes == null ? MAX_EXTRA_KM : MAX_EXTRA_MINUTES;
 
   const comparable = new Set();
   let winner = 0;
@@ -241,15 +248,16 @@ export function rankFacilities(data, {
     if (assessment.match !== 40 && assessment.match !== 100) continue;
     if (routeMatrix && !routeMatrix.secondsByIndex.has(assessment.index)) continue;
     const distanceKm = haversineKm(origin, facility);
-    const driveMinutes = routeMatrix ? routeMatrix.secondsByIndex.get(assessment.index) / 60 : null;
-    const travel = driveMinutes ?? distanceKm;
+    const travelMinutes = routeMatrix ? routeMatrix.secondsByIndex.get(assessment.index) / 60 : null;
+    const travel = travelMinutes ?? distanceKm;
     const matchPenalty = MATCH_PENALTY_MAX_KM * (1 - assessment.match / 100) * penaltyScale;
     const confidenceCost = confidencePenalty(assessment.confidence) * penaltyScale;
     ranked.push({
       facility,
       assessment,
       distanceKm,
-      driveMinutes,
+      travelMinutes,
+      driveMinutes: routeMatrix?.travelMode === "driving" ? travelMinutes : null,
       scoreParts: {travel, matchPenalty, confidencePenalty: confidenceCost},
       recommendedScore: travel + matchPenalty + confidenceCost,
     });

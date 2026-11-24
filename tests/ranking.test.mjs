@@ -32,8 +32,8 @@ function search(data, options = {}) {
   return rankFacilities(data, {service: "Dialysis", origin, ...options});
 }
 
-function matrix(data, routes) {
-  return parseRouteMatrix({routes, calculatedAt: "2026-11-24T12:00:00Z"}, data.matches.Dialysis);
+function matrix(data, routes, travelMode = "driving") {
+  return parseRouteMatrix({routes, travelMode, calculatedAt: "2026-11-24T12:00:00Z"}, data.matches.Dialysis, travelMode);
 }
 
 test("driving minutes reverse the distance order and exclude omitted branches for every sort", () => {
@@ -58,9 +58,33 @@ test("routing preserves zero-second trips and rejects malformed or mismatched ro
   assert.equal(search(data, {routeMatrix: matrix(data, [{index: 0, seconds: 0}])}).results[0].driveMinutes, 0);
   for (const routes of [[{index: 0, seconds: -1}], [{index: 0, seconds: 10801}],
     [{index: 30, seconds: 5}], [{index: 0, seconds: 1}, {index: 0, seconds: 2}]]) {
-    assert.throws(() => matrix(data, routes), /Invalid facility driving time/);
+    assert.throws(() => matrix(data, routes), /Invalid facility travel time/);
   }
   assert.throws(() => parseRouteMatrix({routes: []}, data.matches.Dialysis), /Invalid routing response/);
+});
+
+test("each transport mode ranks by its own estimates and preserves an empty result", () => {
+  const data = fixture();
+  for (const [mode, fastestIndex] of [["driving", 0], ["walking", 2], ["cycling", 1], ["public_transport", 2]]) {
+    const routes = [0, 1, 2].map(index => ({index, seconds: index === fastestIndex ? 30 : 900}));
+    const routeMatrix = matrix(data, routes, mode);
+    assert.equal(routeMatrix.travelMode, mode);
+    for (const sort of ["distance", "recommended"]) {
+      const fastest = search(data, {routeMatrix, sort}).results[0];
+      assert.equal(fastest.facility.id, data.facilities[fastestIndex].id);
+      assert.equal(fastest.travelMinutes, 0.5);
+      assert.equal(fastest.driveMinutes, mode === "driving" ? 0.5 : null);
+    }
+    assert.deepEqual(search(data, {routeMatrix: matrix(data, [], mode)}).results, []);
+  }
+});
+
+test("rejects untagged matrices and matrices for another or unknown travel mode", () => {
+  const {matches} = fixture();
+  const payload = {routes: [{index: 0, seconds: 5}], calculatedAt: "2026-11-24T12:00:00Z"};
+  assert.throws(() => parseRouteMatrix(payload, matches.Dialysis), /Invalid routing response/);
+  assert.throws(() => parseRouteMatrix({...payload, travelMode: "driving"}, matches.Dialysis, "walking"), /Invalid routing response/);
+  assert.throws(() => parseRouteMatrix({...payload, travelMode: "taxi"}, matches.Dialysis, "taxi"), /Invalid routing response/);
 });
 
 test("routed load comparison enforces both the driving-time and geographic detour limits", () => {
@@ -73,6 +97,14 @@ test("routed load comparison enforces both the driving-time and geographic detou
   assert.equal(changed.comparisonCount, 2);
   const load = changed.results[0].projectedLoad;
   assert.equal(load.comparisonScore, (1 / 15 + load.pressure) / 2);
+});
+
+test("projected load uses the selected mode's minutes for non-driving detours", () => {
+  const data = fixture();
+  const compare = seconds => search(data, {considerLoad: true, routeMatrix: matrix(data,
+    [{index: 0, seconds: 60}, {index: 1, seconds}], "walking")});
+  assert.equal(compare(960).comparisonCount, 2);
+  assert.equal(compare(961).comparisonCount, 0);
 });
 
 test("uses distance and the published service-evidence penalties", () => {

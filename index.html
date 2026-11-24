@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Compare health facilities in India by estimated driving time and published evidence for the service you need.">
+  <meta name="description" content="Compare health facilities in India by estimated travel time and published evidence for the service you need.">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>Facility Finder</title>
   <link rel="stylesheet" href="./styles.css">
@@ -25,7 +25,7 @@
     <section class="intro" aria-labelledby="page-title">
       <div>
         <h1 id="page-title">Find the right care</h1>
-        <p>Compare facilities in India by estimated driving time and evidence for the service you need.</p>
+        <p>Compare facilities in India by travel time and evidence for the service you need.</p>
       </div>
       <aside class="snapshot" aria-label="Data coverage">
         <p class="snapshot-label">Published facility data</p>
@@ -89,6 +89,16 @@
               </div>
             </div>
 
+            <div class="field">
+              <label for="travel-mode">Travel mode</label>
+              <select id="travel-mode" name="travelMode">
+                <option value="driving" selected>Driving</option>
+                <option value="walking">Walking</option>
+                <option value="cycling">Cycling</option>
+                <option value="public_transport">Public transport</option>
+              </select>
+            </div>
+
             <div class="load-control">
               <label class="toggle-label" for="projected-load">
                 <input class="toggle" id="projected-load" name="projected-load" type="checkbox" role="switch" autocomplete="off" aria-describedby="load-help">
@@ -98,7 +108,7 @@
               <p id="load-help">Turn on to compare monthly caseload and throughput at nearby facilities for routine care.</p>
             </div>
             <p class="field-error" id="search-error" role="alert" hidden></p>
-            <p class="route-privacy" id="route-privacy">A search sends your selected service and starting coordinates to our routing server. TravelTime receives the coordinates of the origin and candidate facilities.</p>
+            <p class="route-privacy" id="route-privacy">A search sends your service, travel mode and starting coordinates to our routing server. TravelTime receives the travel mode and the coordinates of the origin and candidate facilities.</p>
             <button class="button button-primary" id="search-button" type="submit" aria-describedby="route-privacy">Find facilities <span aria-hidden="true">→</span></button>
           </fieldset>
         </form>
@@ -155,6 +165,7 @@
           </div>
         </div>
         <p id="route-status" class="load-status" role="status" hidden></p>
+        <button id="driving-alternatives" class="button-text" type="button" hidden>Check driving alternatives</button>
         <p id="load-status" class="load-status" role="status" hidden></p>
         <div id="result-list" class="result-list"></div>
       </section>
@@ -165,7 +176,7 @@
       <div class="methods-grid">
         <div>
           <h3>Recommended ranking</h3>
-          <p>TravelTime estimates typical weekday-morning drives of up to three hours. Recommended adds penalties for service match and evidence confidence to the driving minutes. If routing is unavailable, the search labels and uses straight-line distance.</p>
+          <p>TravelTime estimates trips of up to three hours on a typical weekday morning for your chosen travel mode. Recommended combines those minutes with penalties for service match and evidence confidence. If the routing service is unavailable, results use straight-line distance.</p>
         </div>
         <div>
           <h3>Projected load</h3>
