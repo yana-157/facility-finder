@@ -1,5 +1,5 @@
 const EARTH_RADIUS_KM = 6371;
-const MATCH_PENALTY_MAX_KM = 5;
+const MIN_CONFIDENCE = 25;
 const CONFIDENCE_PENALTY_MAX_KM = 30;
 const CONFIDENCE_MIDPOINT = 55;
 const CONFIDENCE_WIDTH = 3.5;
@@ -188,7 +188,8 @@ function confidencePenalty(confidence) {
 }
 
 function compareRecommended(left, right) {
-  return left.recommendedScore - right.recommendedScore || left.scoreParts.travel - right.scoreParts.travel
+  return (right.fitTier ?? -1) - (left.fitTier ?? -1)
+    || left.recommendedScore - right.recommendedScore || left.scoreParts.travel - right.scoreParts.travel
     || left.distanceKm - right.distanceKm;
 }
 
@@ -226,7 +227,16 @@ function assessFit(facility, assessment, asOf, weights) {
     total += value * weights[key];
     weightUsed += weights[key];
   }
-  return {fitComponents: components, fitScore: weightUsed ? assessment.match * total / weightUsed : null};
+  const fitScore = weightUsed ? Math.round(10 * assessment.match * total / weightUsed) / 10 : null;
+  return {fitComponents: components, fitScore};
+}
+
+function fitTier(score) {
+  if (score === null) return null;
+  if (score >= 60) return 3;
+  if (score >= 55) return 2;
+  if (score >= 50) return 1;
+  return 0;
 }
 
 function scorePriorities(ranked, priorities) {
@@ -308,16 +318,18 @@ function compareProjectedLoad(ranked, projections, service) {
   let winner = 0;
   let winningScore = Infinity;
   for (const [index, result] of ranked.entries()) {
+    if (result.fitTier !== baseline.fitTier || result.assessment.kind !== baseline.assessment.kind) continue;
     const extraTravelKm = Math.max(0, result.distanceKm - baseline.distanceKm);
     const extraTravel = Math.max(0, result.scoreParts.travel - baseline.scoreParts.travel);
-    if (extraTravelKm > MAX_EXTRA_KM || extraTravel > detourLimit || result.assessment.kind !== baseline.assessment.kind) continue;
+    const adjustedDetour = Math.max(0, result.recommendedScore - baseline.recommendedScore);
+    if (extraTravelKm > MAX_EXTRA_KM || extraTravel > detourLimit || adjustedDetour > detourLimit) continue;
     const projection = projectionFor(result);
     if (!projection) continue;
     const {row, caseload, capacity} = projection;
     if (["unit", "scope", "period"].some(field => row[field] !== anchor.row[field])) continue;
     if (comparable.has(row.projection_facility_id)) continue;
     const pressure = 1 - 1 / (1 + caseload / capacity);
-    const comparisonScore = (extraTravel / detourLimit + pressure) / 2;
+    const comparisonScore = (adjustedDetour / detourLimit + pressure) / 2;
     comparable.add(row.projection_facility_id);
     result.projectedLoad = {
       caseload, capacity, pressure, comparisonScore, extraTravelKm,
@@ -347,19 +359,33 @@ export function rankFacilities(data, {
   fitWeights = DEFAULT_FIT_WEIGHTS, priorities = [],
 }) {
   const ranked = [];
+  const explicitSort = Object.hasOwn(OTHER_SORTS, sort);
+  let candidateCount = 0;
+  let lowConfidenceCount = 0;
+  let unknownFitCount = 0;
   const penaltyScale = routeMatrix ? MINUTES_PER_KM_EQUIVALENT : 1;
   const assessments = Object.hasOwn(data.matches, service) ? data.matches[service] : [];
   for (const assessment of assessments) {
     const facility = data.facilities[assessment.index];
     if (!facility || !inIndia(facility.lat, facility.lon) || !assessment.term || !assessment.excerpt) continue;
     if (assessment.kind !== "mention" && !EXACT_EVIDENCE.has(assessment.kind)) continue;
-    if (!Number.isFinite(assessment.confidence) || assessment.confidence <= 0) continue;
+    if (!Number.isFinite(assessment.confidence)) continue;
     if (assessment.match !== 40 && assessment.match !== 100) continue;
     if (routeMatrix && !routeMatrix.secondsByIndex.has(assessment.index)) continue;
+    candidateCount++;
+    if (assessment.confidence < MIN_CONFIDENCE) {
+      lowConfidenceCount++;
+      continue;
+    }
+    const fit = assessFit(facility, assessment, data.classifiedAsOf, fitWeights);
+    if (fit.fitScore === 0) continue;
+    if (fit.fitScore === null) {
+      unknownFitCount++;
+      if (!explicitSort) continue;
+    }
     const distanceKm = haversineKm(origin, facility);
     const travelMinutes = routeMatrix ? routeMatrix.secondsByIndex.get(assessment.index) / 60 : null;
     const travel = travelMinutes ?? distanceKm;
-    const matchPenalty = MATCH_PENALTY_MAX_KM * (1 - assessment.match / 100) * penaltyScale;
     const confidenceCost = confidencePenalty(assessment.confidence) * penaltyScale;
     ranked.push({
       facility,
@@ -367,15 +393,15 @@ export function rankFacilities(data, {
       distanceKm,
       travelMinutes,
       driveMinutes: routeMatrix?.travelMode === "driving" ? travelMinutes : null,
-      scoreParts: {travel, matchPenalty, confidencePenalty: confidenceCost},
-      recommendedScore: travel + matchPenalty + confidenceCost,
-      ...assessFit(facility, assessment, data.classifiedAsOf, fitWeights),
+      scoreParts: {travel, confidencePenalty: confidenceCost},
+      recommendedScore: travel + confidenceCost,
+      ...fit, fitTier: fitTier(fit.fitScore),
       priorityScore: null, priorityParts: [],
     });
   }
   if (sort === "priorities") scorePriorities(ranked, priorities);
-  const compare = Object.hasOwn(OTHER_SORTS, sort) ? OTHER_SORTS[sort] : compareRecommended;
-  ranked.sort((left, right) => compare(left, right) || compareRecommended(left, right));
+  const compare = explicitSort ? OTHER_SORTS[sort] : null;
+  ranked.sort(compare ? (left, right) => compare(left, right) || compareRecommended(left, right) : compareRecommended);
   ranked.forEach((result, index) => {
     result.baselineRank = index + 1;
   });
@@ -394,5 +420,6 @@ export function rankFacilities(data, {
       loadStatus = comparisonCount ? (ranked[0].baselineRank === 1 ? "compared" : "changed") : "unavailable";
     }
   }
-  return {results: ranked.slice(0, limit), comparisonCount, baselineFirst, loadStatus};
+  return {results: ranked.slice(0, limit), candidateCount, lowConfidenceCount, unknownFitCount,
+    comparisonCount, baselineFirst, loadStatus};
 }

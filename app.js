@@ -148,7 +148,7 @@ function updateLoadControl() {
   const eligible = routine && sort.value === "recommended";
   considerLoad.disabled = !eligible;
   if (!eligible) considerLoad.checked = false;
-  let help = "Compare nearby facilities using their expected monthly workload.";
+  let help = "Compare expected monthly workload at nearby facilities in the same fit range.";
   if (serviceInfo && !routine) help = "Workload comparisons are available for routine, non-time-critical care.";
   else if (sort.value !== "recommended") help = "Choose Recommended sorting to compare expected workloads.";
   get("load-help").textContent = help;
@@ -186,37 +186,53 @@ function renderSearch(routeMatrix) {
   const place = origin.label + (origin.approximate ? " (approximate)" : "");
   const mode = TRAVEL_MODES[travelMode.value];
   const count = activeResults.length;
+  const noRoutes = routeMatrix?.secondsByIndex.size === 0;
+  const onlyLowConfidence = !count && result.candidateCount > 0 && result.lowConfidenceCount === result.candidateCount;
+  const noQualifyingFit = !count && result.candidateCount > result.lowConfidenceCount;
+  const canShowUnscored = noQualifyingFit && sort.value === "recommended" && result.unknownFitCount > 0;
+  let emptyHint = "Try another service, travel mode or starting location.";
   if (count) {
     context.textContent = `${count} option${count === 1 ? "" : "s"} for ${service.value} near ${place}.`;
-  } else if (routeMatrix) {
+  } else if (noRoutes) {
     context.textContent = `No ${mode.label.toLowerCase()} estimates within three hours were available for ${service.value} near ${place}.`;
     if (travelMode.value === "public_transport") context.textContent += " TravelTime covers only some public transport routes in India.";
+  } else if (onlyLowConfidence) {
+    const branches = routeMatrix ? "All branches with a returned route" : "All branches found";
+    context.textContent = `${branches} for ${service.value} near ${place} fall below the minimum service confidence of 25/100.`;
+  } else if (noQualifyingFit) {
+    const opening = routeMatrix ? "Among branches with a returned route" : "Among branches found";
+    context.textContent = `${opening} for ${service.value} near ${place}, none with service confidence of at least 25/100 has a positive documented fit under these weights.`;
+    emptyHint = canShowUnscored
+      ? "Choose another sort to see branches whose fit could not be scored, or adjust the fit weights."
+      : "Try adjusting the fit weights, service or starting location.";
   } else {
     context.textContent = `No options with service evidence for ${service.value} were found near ${place}.`;
   }
   get("travel-sort").textContent = routeMatrix ? `Fastest ${mode.trip}` : "Shortest straight-line distance";
   get("geographic-sort").hidden = !routeMatrix && sort.value !== "straightLine";
-  let sortNote = "";
+  let sortNote = count && sort.value === "recommended"
+    ? "Recommended shows higher fit ranges first. Within each range, it compares travel plus a penalty for lower service confidence." : "";
   if (sort.value === "straightLine") sortNote = "Ordered by straight-line distance from your starting point.";
   if (count && sort.value === "occupancy" && activeResults.every(item => item.facility.occupancy == null))
-    sortNote = "These branches have no recorded occupancy. Ties follow the Recommended order.";
+    sortNote = "These branches have no recorded occupancy. Ties use the available ranking evidence.";
   if (count && sort.value === "priorities" && activeResults.every(item => item.priorityScore == null))
-    sortNote = "The available records do not support a score for these priorities. Ties follow the Recommended order.";
+    sortNote = "The available records do not support a score for these priorities. Ties use the available ranking evidence.";
   status(get("sort-status"), sortNote);
   if (routeMatrix) {
     routeStatus.hidden = false;
     routeStatus.replaceChildren(externalLink("TravelTime", "https://traveltime.com/"),
       ` weekday-morning ${mode.label.toLowerCase()} estimates · calculated ${formatPublication.format(routeMatrix.calculatedAt)} UTC.`);
   } else {
-    status(routeStatus, `${mode.label} estimates are unavailable. These results use straight-line distance.`);
+    status(routeStatus, `${mode.label} estimates are unavailable. The travel comparison uses straight-line distance.`);
   }
-  controls.hidden = !count;
-  drivingAlternatives.hidden = travelMode.value === "driving" || Boolean(routeMatrix && count);
+  controls.hidden = !count && !canShowUnscored;
+  get("adjust-fit").hidden = !noQualifyingFit;
+  drivingAlternatives.hidden = travelMode.value === "driving" || Boolean(routeMatrix && !noRoutes);
   const loadText = {
     sort: "Choose Recommended sorting to compare expected workloads.",
     unavailable: "There are too few comparable workload estimates to change the recommendation.",
-    compared: `Compared expected workloads at ${result.comparisonCount} nearby facilities. The first recommendation stayed the same.`,
-    changed: `Compared expected workloads at ${result.comparisonCount} nearby facilities. ${activeResults[0]?.facility.name} moved to first.`,
+    compared: `Compared expected workloads at ${result.comparisonCount} nearby facilities in the same fit range. The first recommendation stayed the same.`,
+    changed: `Compared expected workloads at ${result.comparisonCount} nearby facilities in the same fit range. ${activeResults[0]?.facility.name} moved to first.`,
   };
   status(loadStatus, count ? loadText[result.loadStatus] ?? "" : "");
   status(get("equity-status"), equity.checked && count
@@ -227,7 +243,7 @@ function renderSearch(routeMatrix) {
   list.replaceChildren(...activeResults.map((item, index) => resultCard(item, index, cardOptions)));
   get("contacts").hidden = !count;
   get("contact-table").replaceChildren(...(count ? [contactsTable(activeResults, cardOptions)] : []));
-  if (!count) list.append(element("p", "Try another travel mode, service or starting location.", "empty-card"));
+  if (!count) list.append(element("p", emptyHint, "empty-card"));
   get("map-context").textContent = place;
   status(mapSelection, "");
   map.show(origin, activeResults, {travelMode: travelMode.value});
@@ -257,6 +273,7 @@ function clearResults(message) {
   displayedRouting = undefined;
   activeResults = [];
   controls.hidden = true;
+  get("adjust-fit").hidden = true;
   drivingAlternatives.hidden = true;
   list.replaceChildren();
   get("contacts").hidden = true;
@@ -418,6 +435,11 @@ drivingAlternatives.addEventListener("click", () => {
   travelMode.value = "driving";
   search();
 });
+get("adjust-fit").addEventListener("click", () => {
+  setSidebar(true);
+  get("fit-settings").open = true;
+  weightInputs.capability.focus();
+});
 advanced.addEventListener("change", syncPriorities);
 severity.addEventListener("change", () => { updateLoadControl(); rerank(); });
 sort.addEventListener("change", () => { updateLoadControl(); rerank(); });
@@ -426,7 +448,14 @@ for (const control of [limit, ...Object.values(weightInputs)]) {
   const display = get(control.id + "-value");
   const update = () => { display.value = control === limit ? control.value : Number(control.value).toFixed(2); };
   update();
-  control.addEventListener("input", () => { update(); rerank(); });
+  control.addEventListener("input", () => {
+    update();
+    if (control !== limit) {
+      const hasWeight = Object.values(fitWeights()).some(weight => weight > 0);
+      status(get("fit-weight-status"), hasWeight ? "" : "Set at least one weight above zero to calculate documented fit.");
+    }
+    rerank();
+  });
 }
 function locationChanged() {
   clearTimeout(locationTimer);

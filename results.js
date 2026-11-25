@@ -1,4 +1,4 @@
-import { TRAVEL_MODES } from "./ranking.js";
+import { DEFAULT_FIT_WEIGHTS, TRAVEL_MODES } from "./ranking.js";
 
 const number = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 });
 const percent = new Intl.NumberFormat("en-IN", { style: "percent", maximumFractionDigits: 0 });
@@ -21,6 +21,7 @@ const capacityLabels = {
   review_unresolved: "Withheld pending review", missing: "Missing from the release",
 };
 const emptyText = /^(?:n\/a|null|none|nan)$/i;
+const fitRanges = ["above 0 to under 50", "50 to under 55", "55 to under 60", "60–100"];
 
 function text(value) {
   const string = String(value ?? "").trim();
@@ -211,20 +212,27 @@ function scoreBreakdown(result, options) {
   const panel = details("Fit breakdown and ranking");
   const {fitComponents, scoreParts, priorityParts} = result;
   if (fitComponents) {
-    const hasWeights = options.fitWeights && Object.keys(options.fitWeights).length > 0;
+    const weights = options.fitWeights ?? DEFAULT_FIT_WEIGHTS;
+    const includedWeight = Object.entries(fitComponents).reduce((sum, [key, value]) =>
+      sum + (Number.isFinite(value) && weights[key] > 0 ? weights[key] : 0), 0);
     const rows = Object.entries(fitComponents).map(([key, value]) => {
-      const row = [criterionLabels[key] || key, Number.isFinite(value) ? number.format(value * 100) + "/100" : "Not recorded"];
-      if (hasWeights) row.push(Number.isFinite(options.fitWeights[key]) ? percent.format(options.fitWeights[key]) : "—");
-      return row;
+      const recorded = Number.isFinite(value);
+      const share = includedWeight && recorded ? percent.format((weights[key] || 0) / includedWeight) : "—";
+      return [criterionLabels[key] || key, recorded ? number.format(value * 100) + "/100" : "Not recorded", share];
     });
-    panel.append(table(hasWeights ? ["Fit component", "Value", "Weight"] : ["Fit component", "Value"], rows, "score-table", "Fit components"));
-    panel.append(node("p", "Fit combines documented components with your weights and the selected service match. Missing components are excluded from its weighted average."));
+    panel.append(table(["Fit component", "Record", "Share of fit"], rows, "score-table", "Fit components"));
+    panel.append(node("p", includedWeight
+      ? `The documented components share the weight according to your settings. Their weighted average is multiplied by this branch’s service match of ${result.assessment.match}/100.`
+      : "The record has no scored component under the selected weights."));
   }
   if (options.sort === "recommended" && scoreParts) {
     const units = Number.isFinite(result.travelMinutes) ? "min equivalent" : "km equivalent";
-    const items = [["Travel", scoreParts.travel], ["Service match penalty", scoreParts.matchPenalty], ["Service confidence penalty", scoreParts.confidencePenalty], ["Total", result.recommendedScore]];
+    const items = [
+      ["Travel", scoreParts.travel], ["Service confidence penalty", scoreParts.confidencePenalty],
+      ["Confidence-adjusted total", result.recommendedScore],
+    ];
     panel.append(table(["Recommended score component", units], items.map(([label, value]) => [label, number.format(value)]), "score-table", "Recommended score breakdown"));
-    panel.append(node("p", "A lower total ranks first before comparing expected workloads."));
+    panel.append(node("p", "This total orders branches within the same fit range. Confidence below about 60/100 carries a steeper penalty. Higher fit ranges rank first."));
   }
   if (priorityParts?.length) {
     panel.append(table(["Personal priority", "Value", "Weight"], priorityParts.map(({criterion, value, weight}) =>
@@ -266,15 +274,16 @@ export function resultCard(result, index, options) {
   const beds = bedsOf(facility);
   const travel = routingMetric(result, options.travelMode);
   const metrics = [
+    ["Documented fit (/100)", Number.isFinite(result.fitScore) ? number.format(result.fitScore) : "Unavailable"],
+    ["Service confidence (/100)", number.format(assessment.confidence)],
     ...(travel ? [travel] : []), ["Straight-line distance", number.format(result.distanceKm) + " km"],
-    ["Fit (/100)", Number.isFinite(result.fitScore) ? number.format(result.fitScore) : "Unavailable"],
     [beds.label, beds.value],
   ];
   if (Number.isFinite(facility.occupancy)) metrics.push(["Recorded occupancy", percent.format(facility.occupancy)]);
   card.append(header, facts(metrics, "card-metrics"));
   if (options.sort === "recommended") {
     const units = travel ? "min equivalent" : "km equivalent";
-    card.append(node("p", `${result.projectedLoad ? "Baseline recommended" : "Recommended"} score ${number.format(result.recommendedScore)} ${units} · lower ranks first.`, "card-note"));
+    card.append(node("p", `Fit range ${fitRanges[result.fitTier]} · confidence-adjusted total ${number.format(result.recommendedScore)} ${units}. Lower totals rank first within this range before any workload comparison.`, "card-note"));
   }
   if (result.priorityParts?.length) card.append(node("p", "Personal criteria score " + (Number.isFinite(result.priorityScore) ? number.format(result.priorityScore) + "/100" : "unavailable"), "card-note"));
   card.append(facts([["Address", addressOf(facility)], ["Phone", phoneOf(facility)], ["Hours", hoursOf(facility)]], "card-facts"));
@@ -285,7 +294,6 @@ export function resultCard(result, index, options) {
   locate.addEventListener("click", () => options.onShowMap(index));
   actions.prepend(locate);
   card.append(actions, ...reasons(result, options));
-  card.append(node("p", `Service confidence ${assessment.confidence}/100 · ${evidenceLabels[assessment.kind]}`, "card-note"));
   const load = projectionDetails(result, options);
   if (load) card.append(load);
   card.append(sourceEvidence(result, options), scoreBreakdown(result, options));

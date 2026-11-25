@@ -23,7 +23,7 @@ function fixture() {
     ],
     services: [{label: "Dialysis", urgent: false}, {label: "NICU", urgent: true}],
     matches: {
-      Dialysis: [0, 1, 2].map(index => ({index, kind: "directory", match: 100, confidence: 90,
+      Dialysis: [0, 1, 2].map(index => ({index, kind: "directory", match: 100, confidence: 90, capability: 1,
         term: "dialysis", excerpt: "The branch provides dialysis.", projectionEligible: true})),
     },
     projections: [projection("near", 1000, 100), projection("nearby", 100, 900), projection("far", 0, 1000)],
@@ -77,15 +77,15 @@ test("fit and occupancy only score reachable evidence-backed branches, retaining
 test("ordered priorities use the selected mode's journey time and disclose missing observations", () => {
   const data = fixture();
   data.matches.Dialysis[0].confidence = 80;
-  data.matches.Dialysis[1].confidence = 20;
+  data.matches.Dialysis[1].confidence = 40;
   const routeMatrix = matrix(data, [{index: 0, seconds: 600}, {index: 1, seconds: 300}], "cycling");
   const result = priorities => search(data, {sort: "priorities", priorities, routeMatrix}).results;
   const [quick] = result(["travel", "evidence"]);
   assert.equal(quick.facility.name, "Nearby");
   assert.deepEqual(quick.priorityParts, [
-    {criterion: "travel", value: 1, weight: 0.75}, {criterion: "evidence", value: 0.2, weight: 0.25},
+    {criterion: "travel", value: 1, weight: 0.75}, {criterion: "evidence", value: 0.4, weight: 0.25},
   ]);
-  assert.equal(quick.priorityScore, 80);
+  assert.equal(quick.priorityScore, 85);
   assert.equal(result(["evidence", "travel"])[0].facility.name, "Nearest");
   assert.deepEqual(result(["spare"]).map(row => row.priorityScore), [null, null]);
   assert.deepEqual(result(["travel", "spare"]).map(row => row.priorityScore), [100, 0]);
@@ -108,7 +108,7 @@ test("driving minutes reverse the distance order and exclude omitted branches fo
   data.matches.Dialysis[1] = {...data.matches.Dialysis[1], confidence: 25, kind: "mention", match: 40};
   const [fastest] = search(data, {routeMatrix, sort: "distance"}).results;
   assert.equal(fastest.facility.name, "Nearby");
-  assert.equal(fastest.scoreParts.matchPenalty, 6);
+  assert.equal(fastest.fitScore, 40);
   assert.ok(fastest.scoreParts.confidencePenalty > 59.8);
   assert.equal(search(data, {routeMatrix}).results[0].facility.name, "Nearest");
 });
@@ -167,15 +167,92 @@ test("projected load uses the selected mode's minutes for non-driving detours", 
   assert.equal(compare(961).comparisonCount, 0);
 });
 
-test("uses distance and the published service-evidence penalties", () => {
+test("the geographic fallback ranks by fit tier and then confidence-adjusted kilometres", () => {
   const data = fixture();
   data.matches.Dialysis[0] = {...data.matches.Dialysis[0], confidence: 25, kind: "mention", match: 40};
   data.matches.Dialysis[2] = {...data.matches.Dialysis[2], kind: "conflict"};
   const {results} = search(data);
   assert.deepEqual(results.map(result => result.facility.name), ["Nearby", "Nearest"]);
-  assert.equal(results[1].scoreParts.matchPenalty, 3);
+  assert.equal(results[1].fitTier, 0);
   assert.ok(results[1].scoreParts.confidencePenalty > 29.9);
   assert.equal(results[0].distanceKm, haversineKm(origin, data.facilities[1]));
+});
+
+test("all sorts require confidence of at least 25 and remove zero fit before limiting the list", () => {
+  const data = fixture();
+  const [zero, belowFloor, qualifiedMention] = data.matches.Dialysis;
+  zero.capability = 0;
+  Object.assign(belowFloor, {kind: "mention", match: 40, confidence: 24});
+  Object.assign(qualifiedMention, {kind: "mention", match: 40, confidence: 25});
+  const routeMatrix = matrix(data, [0, 1, 2].map(index => ({index, seconds: 60 * index})));
+  for (const sort of ["recommended", "fit", "distance", "straightLine", "name", "confidence", "beds", "occupancy", "priorities"]) {
+    const filtered = search(data, {sort, routeMatrix, limit: 1, priorities: ["travel"]});
+    assert.equal(filtered.candidateCount, 3);
+    assert.equal(filtered.lowConfidenceCount, 1);
+    assert.deepEqual(filtered.results.map(row => row.assessment.index), [2], sort);
+  }
+  delete qualifiedMention.capability;
+  const missing = search(data, {routeMatrix});
+  assert.equal(missing.unknownFitCount, 1);
+  assert.deepEqual(missing.results, []);
+  assert.deepEqual(search(data, {routeMatrix, sort: "distance"}).results.map(row => row.fitScore), [null]);
+  assert.deepEqual(search(data, {routeMatrix, fitWeights: {capability: 0}}).results, []);
+});
+
+test("a higher fit tier precedes even a zero-minute trip and the displayed score sets each boundary", () => {
+  const data = fixture();
+  const [quicker, longer] = data.matches.Dialysis;
+  const routeMatrix = matrix(data, [{index: 0, seconds: 0}, {index: 1, seconds: 10800}]);
+  longer.confidence = 50;
+  for (const [lower, higher, tier] of [[49.9, 50, 1], [54.9, 55, 2], [59.9, 60, 3]]) {
+    quicker.capability = lower / 100;
+    longer.capability = higher / 100;
+    const [first, second] = search(data, {routeMatrix}).results;
+    assert.deepEqual([first.fitScore, first.fitTier, first.travelMinutes], [higher, tier, 180]);
+    assert.deepEqual([second.fitScore, second.fitTier, second.travelMinutes], [lower, tier - 1, 0]);
+  }
+  quicker.capability = 0.5998;
+  assert.equal(search(data, {routeMatrix}).results[0].fitTier, 3);
+});
+
+test("within the top fit tier confidence justifies a limited detour and the trip estimate stays intact", () => {
+  const data = fixture();
+  data.matches.Dialysis[0].capability = 0.85;
+  data.matches.Dialysis[0].confidence = 60;
+  data.matches.Dialysis[1].capability = 0.65;
+  data.matches.Dialysis[1].confidence = 90;
+  const trips = minutes => search(data, {routeMatrix: matrix(data,
+    [{index: 0, seconds: 1200}, {index: 1, seconds: minutes * 60}], "walking")}).results;
+  const [first, second] = trips(27);
+  assert.deepEqual([first.assessment.index, first.fitTier, first.travelMinutes], [1, 3, 27]);
+  assert.ok(Math.abs(second.recommendedScore - 31.60) < 0.01);
+  assert.equal(second.travelMinutes, 20);
+  assert.equal(trips(35)[0].assessment.index, 0);
+});
+
+test("changing fit weights can change the top recommendation on the same routes", () => {
+  const data = fixture();
+  data.facilities[0].open24h = false;
+  data.facilities[1].open24h = true;
+  data.matches.Dialysis[1].capability = 0.5;
+  const routeMatrix = matrix(data, [{index: 0, seconds: 600}, {index: 1, seconds: 300}]);
+  const results = fitWeights => search(data, {fitWeights, routeMatrix}).results.map(row => row.assessment.index);
+  assert.deepEqual(results({capability: 1}), [0, 1]);
+  assert.deepEqual(results({availability: 1}), [1]);
+});
+
+test("the workload option cannot cross fit tiers or exceed the confidence-adjusted detour cap", () => {
+  const data = fixture();
+  const routeMatrix = matrix(data, [{index: 0, seconds: 600}, {index: 1, seconds: 600}]);
+  const comparison = () => search(data, {routeMatrix, considerLoad: true});
+  assert.equal(comparison().results[0].assessment.index, 1);
+  data.matches.Dialysis[1].capability = 0.55;
+  assert.equal(comparison().loadStatus, "unavailable");
+  assert.equal(comparison().results[0].assessment.index, 0);
+  data.matches.Dialysis[1].capability = 0.8;
+  data.matches.Dialysis[1].confidence = 50;
+  assert.equal(comparison().loadStatus, "unavailable");
+  assert.equal(comparison().results[0].assessment.index, 0);
 });
 
 test("only a routine opt-in can promote a comparable branch within the detour cap", () => {
