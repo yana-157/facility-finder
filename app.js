@@ -1,4 +1,4 @@
-import { attachClassicData, fetchRoutingResponse, haversineKm, parseRouteMatrix, resolveOrigin, rankFacilities, RouteOriginError, TRAVEL_MODES } from "./ranking.js?v=c9a86d54";
+import { attachClassicData, haversineKm, parseRouteMatrix, resolveOrigin, rankFacilities, RouteOriginError, ROUTING_URL, TRAVEL_MODES } from "./ranking.js?v=eddbfb96";
 import { facilityMap } from "./map.js?v=d6a60b1b";
 import { resultCard, contactsTable, formatTravelTime } from "./results.js?v=faa9e861";
 
@@ -276,10 +276,10 @@ function fetchRoutes(location, serviceName, selectedMode, allowOriginAdjustment)
   const routeLookup = routeLookups.get(selectedMode);
   if (routeLookup?.body === body && routeLookup.expires > Date.now()) return routeLookup.promise;
   const lookup = {body, expires: Date.now() + 30 * 60 * 1000};
-  lookup.promise = fetchRoutingResponse({
+  lookup.promise = fetch(ROUTING_URL, {
     method: "POST", headers: {"Content-Type": "application/json"}, body,
     credentials: "omit", redirect: "error", referrerPolicy: "no-referrer", cache: "no-store", signal: AbortSignal.timeout(allowOriginAdjustment ? 95000 : 35000),
-  }, snapshotSha256).then(async response => {
+  }).then(async response => {
     if (!response.ok) {
       const problem = await response.json().catch(() => null);
       if (response.status === 422 && problem?.code === "unroutable_origin") {
