@@ -1,6 +1,6 @@
-import { attachClassicData, haversineKm, parseRouteMatrix, resolveOrigin, rankFacilities, RouteOriginError, ROUTING_URL, TRAVEL_MODES } from "./ranking.js?v=eecbb77a";
-import { facilityMap } from "./map.js?v=5061eb7f";
-import { resultCard, contactsTable, formatTravelTime } from "./results.js?v=959f2650";
+import { attachClassicData, haversineKm, parseRouteMatrix, resolveOrigin, rankFacilities, RouteOriginError, ROUTING_URL, TRAVEL_MODES } from "./ranking.js?v=d4b77316";
+import { facilityMap } from "./map.js?v=7f50ffd6";
+import { resultCard, contactsTable, formatTravelTime, formatRouteDistance } from "./results.js?v=450878f0";
 
 const get = id => document.getElementById(id);
 const form = get("finder-form");
@@ -29,6 +29,7 @@ const context = get("search-context");
 const loadStatus = get("load-status");
 const routeStatus = get("route-status");
 const originStatus = get("origin-status");
+const retryRoutes = get("retry-routes");
 const drivingAlternatives = get("driving-alternatives");
 const controls = get("results-controls");
 const mapSelection = get("map-selection");
@@ -41,6 +42,10 @@ const formatDate = new Intl.DateTimeFormat("en-GB", {
 const formatPublication = new Intl.DateTimeFormat("en-GB", {
   dateStyle: "medium", timeStyle: "short", timeZone: "UTC",
 });
+const formatDeparture = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata",
+});
+class RouteRequestError extends Error {}
 let data;
 let snapshotSha256;
 let origin;
@@ -101,14 +106,13 @@ function focusResult(index, fromCard = false) {
     card.dataset.active = card.id === `facility-${index + 1}`;
   }
   const title = element("strong", `${index + 1}. ${result.facility.name}`);
-  const travel = result.travelMinutes == null
-    ? `${result.distanceKm.toFixed(1)} km straight line`
-    : `${formatTravelTime(result.travelMinutes)} · ${TRAVEL_MODES[travelMode.value].label}`;
-  const distance = document.createTextNode(` · ${travel} `);
+  const mode = TRAVEL_MODES[travelMode.value].label;
+  const distance = Number.isFinite(result.routeDistanceKm) ? formatRouteDistance(result.routeDistanceKm) : "Route distance unavailable";
+  const journey = document.createTextNode(` · ${mode} · ${formatTravelTime(result.travelMinutes)} · ${distance} `);
   const jump = element("button", "View option", "button-text");
   jump.type = "button";
   jump.addEventListener("click", () => scrollTo(get(`facility-${index + 1}`)));
-  mapSelection.replaceChildren(title, distance, jump);
+  mapSelection.replaceChildren(title, journey, jump);
   mapSelection.hidden = false;
   if (fromCard) get("map-title").scrollIntoView({ block: "nearest" });
   map.highlight(index, fromCard);
@@ -170,11 +174,11 @@ function renderSearch(routeMatrix) {
   activeResults = result.results;
   const place = origin.label + (origin.approximate ? " (approximate)" : "");
   const mode = TRAVEL_MODES[travelMode.value];
-  const routedOrigin = routeMatrix?.routedOrigin;
+  const routedOrigin = routeMatrix.routedOrigin;
   const adjusted = routedOrigin && (routedOrigin.lat !== origin.lat || routedOrigin.lon !== origin.lon);
   const startLabel = adjusted ? `${routedOrigin.lat.toFixed(5)}, ${routedOrigin.lon.toFixed(5)}` : "";
   const count = activeResults.length;
-  const noRoutes = routeMatrix?.secondsByIndex.size === 0;
+  const noRoutes = routeMatrix.secondsByIndex.size === 0;
   const onlyLowConfidence = !count && result.candidateCount > 0 && result.lowConfidenceCount === result.candidateCount;
   const noQualifyingFit = !count && result.candidateCount > result.lowConfidenceCount;
   const canShowUnscored = noQualifyingFit && sort.value === "recommended" && result.unknownFitCount > 0;
@@ -185,52 +189,48 @@ function renderSearch(routeMatrix) {
     context.textContent = `No ${mode.label.toLowerCase()} estimates within three hours were available for ${service.value} near ${place}.`;
     if (travelMode.value === "public_transport") context.textContent += " TravelTime covers only some public transport routes in India.";
   } else if (onlyLowConfidence) {
-    const branches = routeMatrix ? "All branches with a returned route" : "All branches found";
-    context.textContent = `${branches} for ${service.value} near ${place} fall below the minimum service confidence of 25/100.`;
+    context.textContent = `All branches with a returned route for ${service.value} near ${place} fall below the minimum service confidence of 25/100.`;
   } else if (noQualifyingFit) {
-    const opening = routeMatrix ? "Among branches with a returned route" : "Among branches found";
-    context.textContent = `${opening} for ${service.value} near ${place}, none with service confidence of at least 25/100 has a positive documented fit under these weights.`;
+    context.textContent = `Among branches with a returned route for ${service.value} near ${place}, none with service confidence of at least 25/100 has a positive documented fit under these weights.`;
     emptyHint = canShowUnscored
       ? "Choose another sort to see branches whose fit could not be scored, or adjust the fit weights."
       : "Try adjusting the fit weights, service or starting location.";
   } else {
     context.textContent = `No options with service evidence for ${service.value} were found near ${place}.`;
   }
-  get("travel-sort").textContent = routeMatrix ? `Fastest ${mode.trip}` : "Shortest straight-line distance";
-  get("geographic-sort").hidden = !routeMatrix && sort.value !== "straightLine";
+  get("travel-sort").textContent = `Fastest ${mode.trip}`;
   let sortNote = count && sort.value === "recommended"
-    ? "Facilities in the strongest fit range come first. Within each range, shorter trips and stronger service evidence rank higher." : "";
-  if (count && sort.value === "distance" && routeMatrix) sortNote = `Facilities with qualifying service evidence are ordered by estimated ${mode.label.toLowerCase()} time.`;
-  if (sort.value === "straightLine" || (sort.value === "distance" && !routeMatrix)) sortNote = "Ordered by straight-line distance from your starting point.";
+    ? "Facilities in the strongest fit range come first. Within each range, shorter travel times and stronger service evidence rank higher." : "";
+  if (count && sort.value === "distance") sortNote = `Facilities with qualifying service evidence are ordered by estimated ${mode.label.toLowerCase()} time.`;
+  if (count && sort.value === "routeDistance") sortNote = `Shortest ${mode.label.toLowerCase()} routes come first. Facilities with unknown route length appear last.`;
   if (count && sort.value === "occupancy" && activeResults.every(item => item.facility.occupancy == null))
     sortNote = "These branches have no recorded occupancy. Ties use the available ranking evidence.";
   status(get("sort-status"), sortNote);
   status(originStatus, "");
-  if (routeMatrix) {
-    routeStatus.hidden = false;
-    routeStatus.replaceChildren(externalLink("TravelTime", "https://traveltime.com/"),
-      ` weekday-morning ${mode.label.toLowerCase()} estimates · calculated ${formatPublication.format(routeMatrix.calculatedAt)} UTC.`);
-    if (adjusted) {
-      const km = haversineKm(origin, routedOrigin);
-      const separation = km < 1 ? `${formatNumber.format(Math.round(km * 1000))} m` : `${formatDecimal.format(km)} km`;
-      const detail = element("details", "", "origin-details");
-      detail.append(element("summary", "Starting point details"));
-      const sources = element("p");
-      sources.append(`From your coordinates (${origin.lat}, ${origin.lon}) to the road (${startLabel}). `,
-        externalLink("Road lookup by FOSSGIS", "https://routing.openstreetmap.de/about.html"), " · ",
-        externalLink("© OpenStreetMap contributors", "https://www.openstreetmap.org/copyright"), " · ",
-        externalLink("Fix the map", "https://www.openstreetmap.org/fixthemap"));
-      detail.append(sources);
-      originStatus.replaceChildren(element("strong", `Your route starts ${separation} from the point you entered.`),
-        document.createTextNode(" Travel times and directions start at the road. The estimate excludes the gap to your point."), detail);
-      originStatus.hidden = false;
-    }
-  } else {
-    status(routeStatus, `${mode.label} estimates are unavailable. The travel comparison uses straight-line distance.`);
+  routeStatus.hidden = false;
+  const timing = routeMatrix.departureTime
+    ? `${mode.label.toLowerCase()} estimates for departure on ${formatDeparture.format(routeMatrix.departureTime)} IST`
+    : `weekday-morning ${mode.label.toLowerCase()} estimates`;
+  routeStatus.replaceChildren(externalLink("TravelTime", "https://traveltime.com/"),
+    ` ${timing} · calculated ${formatPublication.format(routeMatrix.calculatedAt)} UTC.`);
+  if (adjusted) {
+    const km = haversineKm(origin, routedOrigin);
+    const separation = km < 1 ? `${formatNumber.format(Math.round(km * 1000))} m` : `${formatDecimal.format(km)} km`;
+    const detail = element("details", "", "origin-details");
+    detail.append(element("summary", "Starting point details"));
+    const sources = element("p");
+    sources.append(`From your coordinates (${origin.lat}, ${origin.lon}) to the road (${startLabel}). `,
+      externalLink("Road lookup by FOSSGIS", "https://routing.openstreetmap.de/about.html"), " · ",
+      externalLink("© OpenStreetMap contributors", "https://www.openstreetmap.org/copyright"), " · ",
+      externalLink("Fix the map", "https://www.openstreetmap.org/fixthemap"));
+    detail.append(sources);
+    originStatus.replaceChildren(element("strong", `Your route starts ${separation} from the point you entered.`),
+      document.createTextNode(" Travel time, route distance and directions start at the road. The estimates exclude the gap to your point."), detail);
+    originStatus.hidden = false;
   }
   controls.hidden = !count && !canShowUnscored;
   get("adjust-fit").hidden = !noQualifyingFit;
-  drivingAlternatives.hidden = travelMode.value === "driving" || Boolean(routeMatrix && !noRoutes);
+  drivingAlternatives.hidden = travelMode.value === "driving" || !noRoutes;
   const loadText = {
     urgency: workloadUrgencyText,
     sort: "Choose Recommended sorting to compare expected workloads.",
@@ -246,7 +246,7 @@ function renderSearch(routeMatrix) {
   }
   status(get("equity-status"), equityStatus);
   const cardOptions = {activeResults, service: service.value, serviceInfo, travelMode: travelMode.value, sort: sort.value, origin: routedOrigin ?? origin,
-    fitWeights: weights, snapshotDate: data.classifiedAsOf, sourceUrl: data.sourceUrl, projectionSourceUrl: data.projectionSourceUrl,
+    fitWeights: weights, departureTime: routeMatrix.departureTime, snapshotDate: data.classifiedAsOf, sourceUrl: data.sourceUrl, projectionSourceUrl: data.projectionSourceUrl,
     onShowMap: index => focusResult(index, true)};
   list.replaceChildren(...activeResults.map((item, index) => resultCard(item, index, cardOptions)));
   get("contacts").hidden = !count;
@@ -268,7 +268,7 @@ function fetchRoutes(location, serviceName, selectedMode, allowOriginAdjustment)
   const lookup = {body, expires: Date.now() + 30 * 60 * 1000};
   lookup.promise = fetch(ROUTING_URL, {
     method: "POST", headers: {"Content-Type": "application/json"}, body,
-    credentials: "omit", redirect: "error", referrerPolicy: "no-referrer", cache: "no-store", signal: AbortSignal.timeout(allowOriginAdjustment ? 95000 : 35000),
+    credentials: "omit", redirect: "error", referrerPolicy: "no-referrer", cache: "no-store", signal: AbortSignal.timeout(allowOriginAdjustment || selectedMode === "public_transport" ? 95000 : 35000),
   }).then(async response => {
     if (!response.ok) {
       const problem = await response.json().catch(() => null);
@@ -276,8 +276,10 @@ function fetchRoutes(location, serviceName, selectedMode, allowOriginAdjustment)
         throw new RouteOriginError(`TravelTime couldn’t start a ${TRAVEL_MODES[selectedMode].trip} from this location. Enter coordinates on a nearby road, or search by city or PIN code.`);
       }
       if ([429, 502].includes(response.status) && problem?.code === "origin_adjustment_unavailable") {
-        throw new RouteOriginError("TravelTime couldn’t check an alternative starting point right now. Try the search again shortly, or enter another location.");
+        throw new RouteRequestError("TravelTime couldn’t check a nearby road right now. Try again shortly, or enter another location.");
       }
+      if (response.status === 429) throw new RouteRequestError("TravelTime is temporarily limiting requests. Try again shortly.");
+      if (response.status === 409) throw new RouteRequestError("The routing service and facility data are out of sync. Refresh the page and try again.");
       throw new Error("Routing unavailable.");
     }
     return parseRouteMatrix(await response.json(), data.matches[serviceName], selectedMode, allowOriginAdjustment);
@@ -293,6 +295,7 @@ function clearResults(message) {
   displayedRouting = undefined;
   activeResults = [];
   controls.hidden = true;
+  retryRoutes.hidden = true;
   get("adjust-fit").hidden = true;
   drivingAlternatives.hidden = true;
   list.replaceChildren();
@@ -340,7 +343,7 @@ async function search({ focus = true } = {}) {
   searchStarted = true;
   get("finder-output").dataset.searched = "true";
   const selectedMode = travelMode.value;
-  clearResults(`Finding ${TRAVEL_MODES[selectedMode].label.toLowerCase()} times for ${service.value} near ${origin.label}…`);
+  clearResults(`Finding ${TRAVEL_MODES[selectedMode].label.toLowerCase()} routes for ${service.value} near ${origin.label}…`);
   if (focus) {
     const heading = get("results-title");
     heading.focus({ preventScroll: true });
@@ -351,12 +354,11 @@ async function search({ focus = true } = {}) {
     matrix = await fetchRoutes(origin, service.value, selectedMode, locationType.value === "coordinates");
   } catch (cause) {
     if (version !== searchVersion) return;
-    if (cause instanceof RouteOriginError) {
-      context.textContent = `${service.value} near ${origin.label}`;
-      status(routeStatus, cause.message);
-      return;
-    }
-    matrix = null;
+    context.textContent = `${service.value} near ${origin.label}`;
+    status(routeStatus, cause instanceof RouteOriginError || cause instanceof RouteRequestError ? cause.message
+      : `${TRAVEL_MODES[selectedMode].label} routes are unavailable right now. Try again to get journey times and distances.`);
+    retryRoutes.hidden = false;
+    return;
   }
   if (version !== searchVersion) return;
   displayedRouting = matrix;
@@ -418,6 +420,7 @@ service.addEventListener("change", selectService);
 for (const radio of document.querySelectorAll('[name="browse-by"]')) radio.addEventListener("change", updateGroups);
 group.addEventListener("change", updateServices);
 travelMode.addEventListener("change", () => { if (origin) search({focus: false}); });
+retryRoutes.addEventListener("click", () => search());
 drivingAlternatives.addEventListener("click", () => {
   travelMode.value = "driving";
   search();

@@ -3,6 +3,7 @@ import {createHash} from "node:crypto";
 import {readFile} from "node:fs/promises";
 import test from "node:test";
 import {attachClassicData, haversineKm, parseRouteMatrix, rankFacilities, resolveOrigin} from "../ranking.js";
+import {formatRouteDistance, formatTravelTime} from "../results.js";
 
 const origin = {lat: 18.52, lon: 73.85};
 
@@ -144,6 +145,54 @@ test("routing preserves zero-second trips and rejects malformed or mismatched ro
   assert.throws(() => parseRouteMatrix({routes: []}, data.matches.Dialysis), /Invalid routing response/);
 });
 
+test("route distance uses the selected mode's measurements and places time-only routes last", () => {
+  const data = fixture();
+  for (const mode of ["driving", "walking", "cycling", "public_transport"]) {
+    const routes = [{index: 0, seconds: 60}, {index: 1, seconds: 120, distanceMeters: 350},
+      {index: 2, seconds: 0, distanceMeters: 0}];
+    const byLength = routes => search(data, {routeMatrix: matrix(data, routes, mode), sort: "routeDistance"}).results;
+    const observed = byLength(routes);
+    assert.deepEqual(observed.map(row => [row.assessment.index, row.routeDistanceKm, row.travelMinutes]),
+      [[2, 0, 0], [1, 0.35, 2], [0, null, 1]]);
+    assert.ok(observed[0].distanceKm > observed[1].distanceKm);
+    const tied = byLength([{index: 0, seconds: 900, distanceMeters: 1000},
+      {index: 1, seconds: 10, distanceMeters: 1000}, {index: 2, seconds: 5, distanceMeters: null}]);
+    assert.deepEqual(tied.map(row => row.assessment.index), [0, 1, 2]);
+    assert.deepEqual(byLength([]), []);
+  }
+  assert.deepEqual(search(data, {sort: "routeDistance"}).results, []);
+});
+
+test("route timestamps require an ISO instant and distance values must be finite and nonnegative", () => {
+  const data = fixture();
+  const payload = {travelMode: "driving", calculatedAt: "2026-11-24T12:00:00Z", routes: [{index: 1, seconds: 90}]};
+  const parse = extra => parseRouteMatrix({...payload, ...extra}, data.matches.Dialysis);
+  assert.equal(parse({}).departureTime, undefined);
+  assert.equal(parse({departureTime: "2026-11-25T08:00:00+05:30"}).departureTime.toISOString(), "2026-11-25T02:30:00.000Z");
+  for (const departureTime of [null, "2026-11-25", "yesterday", "2026-11-25T08:00:00", "2026-13-25T08:00:00Z"]) {
+    assert.throws(() => parse({departureTime}), /departure time/);
+  }
+  for (const distanceMeters of [-1, NaN, Infinity, "2500"]) {
+    assert.throws(() => parse({routes: [{index: 1, seconds: 90, distanceMeters}]}), /route distance/);
+  }
+  assert.equal(formatTravelTime(0), "0 min");
+  assert.deepEqual([0, 0.0001, 0.001, 0.35, 0.999, 12.345, null, -1].map(formatRouteDistance),
+    ["0 km", "<0.001 km", "0.001 km", "0.35 km", "0.999 km", "12.3 km", "Unavailable", "Unavailable"]);
+});
+
+test("Recommended breaks otherwise identical routed scores on measured kilometres and keeps unknown distances stable", () => {
+  const data = fixture();
+  data.matches.Dialysis.reverse();
+  const routeMatrix = matrix(data, [{index: 0, seconds: 1200, distanceMeters: 5400},
+    {index: 1, seconds: 1200}, {index: 2, seconds: 1200, distanceMeters: 1200}]);
+  const ids = () => search(data, {routeMatrix}).results.map(row => row.assessment.index);
+  assert.deepEqual(ids(), [2, 0, 1]);
+  routeMatrix.distanceMetersByIndex.delete(0);
+  assert.deepEqual(ids(), [2, 1, 0]);
+  routeMatrix.distanceMetersByIndex.clear();
+  assert.deepEqual(ids(), [2, 1, 0]);
+});
+
 test("adjusted starts require permission and valid coordinates and apply to facility distances", () => {
   const data = fixture();
   const payload = {routes: [{index: 0, seconds: 600}, {index: 1, seconds: 120}], travelMode: "driving",
@@ -225,7 +274,7 @@ test("all sorts require confidence of at least 25 and remove zero fit before lim
   Object.assign(belowFloor, {kind: "mention", match: 40, confidence: 24});
   Object.assign(qualifiedMention, {kind: "mention", match: 40, confidence: 25});
   const routeMatrix = matrix(data, [0, 1, 2].map(index => ({index, seconds: 60 * index})));
-  for (const sort of ["recommended", "fit", "distance", "straightLine", "name", "confidence", "beds", "occupancy", "priorities"]) {
+  for (const sort of ["recommended", "fit", "distance", "routeDistance", "straightLine", "name", "confidence", "beds", "occupancy", "priorities"]) {
     const filtered = search(data, {sort, routeMatrix, limit: 1, priorities: ["travel"]});
     assert.equal(filtered.candidateCount, 3);
     assert.equal(filtered.lowConfidenceCount, 1);

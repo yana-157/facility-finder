@@ -8,9 +8,9 @@
   <title>Find a health facility · Facility Finder</title>
   <link rel="stylesheet" href="./fonts/roboto.css">
   <link rel="stylesheet" href="./styles.css?v=a469293e">
-  <link rel="stylesheet" href="./results.css?v=92da8587">
+  <link rel="stylesheet" href="./results.css?v=a6c0b072">
   <link rel="stylesheet" href="./directory.css?v=89f815fa">
-  <script type="module" src="./app.js?v=8a8df283"></script>
+  <script type="module" src="./app.js?v=96f695b8"></script>
 </head>
 <body>
   <a class="skip-link" href="#finder">Skip to care search</a>
@@ -152,6 +152,7 @@
         </div>
         <p id="search-context" class="caption" role="status">Choose a service and enter a location to see options.</p>
         <p id="route-status" class="load-status" role="status" hidden></p>
+        <button id="retry-routes" class="button-text" type="button" hidden>Retry route estimates</button>
         <div id="origin-status" class="origin-note" role="status" hidden></div>
         <p id="sort-status" class="caption" role="status" hidden></p>
         <button id="adjust-fit" class="button-text" type="button" hidden>Adjust fit weights</button>
@@ -164,7 +165,7 @@
             <label for="sort">Sort by</label>
             <select id="sort" autocomplete="off" aria-controls="result-list">
               <option value="recommended" selected>Recommended</option><option id="travel-sort" value="distance">Fastest drive</option>
-              <option value="straightLine" id="geographic-sort">Straight-line distance (nearest first)</option>
+              <option value="routeDistance">Route distance (shortest first)</option>
               <option value="fit">Facility fit (highest first)</option><option value="beds">Capacity (most beds first)</option>
               <option value="occupancy">Occupancy (lowest first)</option>
               <option value="confidence">Service confidence</option><option value="name">Name</option>
@@ -193,7 +194,7 @@
       <summary>How results are ranked</summary>
       <ul>
         <li>Every sort requires service confidence of at least 25/100 and excludes branches with a documented fit of zero. Recommended also requires a known fit score. It shows scores of 60–100 first, then 55 to under 60, 50 to under 55, and positive scores under 50. The service match is included in fit.</li>
-        <li>Within a fit range, Recommended adds a confidence penalty to the estimated trip and puts lower totals first. TravelTime estimates trips of up to three hours on a typical weekday morning in your chosen mode. If routing is unavailable, the app labels its straight-line comparison.</li>
+        <li>Within a fit range, Recommended adds a confidence penalty to the estimated trip time and puts lower totals first. Journey time and distance in kilometres come from routes for your travel mode. If routing is unavailable, retry the search above the results.</li>
         <li>Ease pressure on busy facilities can promote a nearby routine-care alternative in the same fit range when the workload data are comparable and the confidence-adjusted detour is small. Equity comparisons require paired evidence for the same branch and service.</li>
       </ul>
       <p><a href="./methods.html">Read the full data and methods report</a></p>

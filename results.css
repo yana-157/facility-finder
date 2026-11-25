@@ -45,9 +45,9 @@
 }
 
 .card-place { margin: .18rem 0 0; }
-.card-journey { margin: 0; text-align: right; }
+.card-journey { display: grid; grid-auto-flow: column; gap: .45rem 1rem; margin: 0; text-align: right; }
 .card-journey > div { display: flex; flex-direction: column-reverse; }
-.card-journey dt { color: var(--muted); font-size: .78rem; line-height: 1.25; }
+.card-journey dt { max-width: 8rem; color: var(--muted); font-size: .78rem; line-height: 1.25; }
 .card-journey dd {
   margin: 0 0 .15rem;
   color: var(--ink);
@@ -85,6 +85,10 @@
 .facility-disclosures > details { min-width: 0; max-width: 100%; }
 .facility-disclosures > details[open] { flex-basis: 100%; }
 .facility-disclosures summary { padding-block: .55rem; line-height: 1.35; }
+
+@container (max-width: 36rem) {
+  .card-journey { grid-auto-flow: row; }
+}
 
 @container (max-width: 26rem) {
   .result-card .card-header { grid-template-columns: 1.4rem minmax(0, 1fr) auto; gap: .45rem; }

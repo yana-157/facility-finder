@@ -1,6 +1,7 @@
-import { DEFAULT_FIT_WEIGHTS, TRAVEL_MODES } from "./ranking.js?v=eecbb77a";
+import { DEFAULT_FIT_WEIGHTS, TRAVEL_MODES } from "./ranking.js?v=d4b77316";
 
 const number = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 });
+const shortDistance = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 3 });
 const percent = new Intl.NumberFormat("en-IN", { style: "percent", maximumFractionDigits: 0 });
 const evidenceLabels = {
   corroborated: "Hospital source and independent corroboration",
@@ -10,7 +11,7 @@ const evidenceLabels = {
   mention: "Mentioned in the facility record",
 };
 const criterionLabels = {
-  fit: "Facility fit", travel: "Journey length", distance: "Journey length", evidence: "Service evidence",
+  fit: "Facility fit", travel: "Travel time", distance: "Travel time", evidence: "Service evidence",
   capability: "Equipment and staff", availability: "Round-the-clock operation",
   quality: "Accreditation and rating", freshness: "Record freshness", spare: "Spare capacity",
 };
@@ -159,6 +160,7 @@ function section(title, bullets) {
 
 export function formatTravelTime(minutes) {
   if (!Number.isFinite(minutes) || minutes < 0) return "Unavailable";
+  if (minutes === 0) return "0 min";
   if (minutes < 1) return "Under 1 min";
   const wholeMinutes = Math.round(minutes);
   const hours = Math.floor(wholeMinutes / 60);
@@ -167,27 +169,36 @@ export function formatTravelTime(minutes) {
   return remainder ? `${hours} hr ${remainder} min` : `${hours} hr`;
 }
 
-function routingMetric(result, travelMode) {
-  if (!Number.isFinite(result.travelMinutes)) return null;
-  return [TRAVEL_MODES[travelMode].label + " time", formatTravelTime(result.travelMinutes)];
+export function formatRouteDistance(km) {
+  if (!Number.isFinite(km) || km < 0) return "Unavailable";
+  if (km > 0 && km < 0.001) return "<0.001 km";
+  return (km < 1 ? shortDistance : number).format(km) + " km";
+}
+
+function routeDistanceLabel(travelMode) {
+  if (travelMode === "public_transport") return "Estimated public transport route distance";
+  return TRAVEL_MODES[travelMode].label + " route distance";
+}
+
+function routingMetrics(result, travelMode) {
+  return [[TRAVEL_MODES[travelMode].label + " time", formatTravelTime(result.travelMinutes)],
+    [routeDistanceLabel(travelMode), formatRouteDistance(result.routeDistanceKm)]];
 }
 
 function rankExplanation(result, index, options) {
-  if (options.sort !== "recommended") return "";
+  if (options.sort !== "recommended" || !Number.isFinite(result.travelMinutes)) return "";
   if (index === 0 && result.projectedLoad && result.baselineRank > 1)
     return `The workload comparison moved this facility up from #${result.baselineRank} within the same fit range.`;
   const later = options.activeResults?.slice(index + 1) ?? [];
-  const routed = Number.isFinite(result.travelMinutes);
-  const displayMeasure = row => routed ? formatTravelTime(row.travelMinutes) : number.format(row.distanceKm);
-  const shorter = later.filter(row => row.fitScore > 0 && row.scoreParts.travel < result.scoreParts.travel
-    && displayMeasure(row) !== displayMeasure(result));
+  const displayedTime = formatTravelTime(result.travelMinutes);
+  const shorter = later.filter(row => row.fitScore > 0 && Number.isFinite(row.travelMinutes)
+    && row.travelMinutes < result.travelMinutes && formatTravelTime(row.travelMinutes) !== displayedTime);
   const lowerFit = shorter.find(row => row.fitTier < result.fitTier);
   const alternative = lowerFit || shorter.find(row => row.fitTier === result.fitTier
     && result.assessment.confidence > row.assessment.confidence && result.recommendedScore < row.recommendedScore);
   if (!alternative) return "";
   const rank = index + 2 + later.indexOf(alternative);
-  const journey = routed ? `a shorter estimated ${TRAVEL_MODES[options.travelMode].trip} (${displayMeasure(alternative)})`
-    : `a shorter straight-line distance (${displayMeasure(alternative)} km)`;
+  const journey = `a shorter estimated ${TRAVEL_MODES[options.travelMode].trip} (${formatTravelTime(alternative.travelMinutes)})`;
   const reason = lowerFit ? `Its documented fit of ${number.format(alternative.fitScore)}/100 places it in a lower fit range.`
     : `Within the same fit range, its lower service confidence (${number.format(alternative.assessment.confidence)}/100) puts it behind this facility.`;
   return `#${rank} ${alternative.facility.name} has ${journey}. ${reason}`;
@@ -196,8 +207,8 @@ function rankExplanation(result, index, options) {
 function reasons(result, options) {
   const {assessment, facility} = result;
   const why = [`The service evidence matches “${assessment.term}”.`];
-  const mode = routingMetric(result, options.travelMode);
-  if (mode) why.push(`${mode[1]} by ${TRAVEL_MODES[options.travelMode].label.toLowerCase()} on a typical weekday morning.`);
+  if (Number.isFinite(result.travelMinutes))
+    why.push(`TravelTime estimates ${formatTravelTime(result.travelMinutes)} by ${TRAVEL_MODES[options.travelMode].label.toLowerCase()}.`);
   if (assessment.matchedEquipment?.length) why.push("Documented equipment: " + assessment.matchedEquipment.join(", ") + ".");
   if (assessment.matchedStaff?.length) why.push("Documented staff: " + assessment.matchedStaff.join(", ") + ".");
   if (facility.open24h === true) why.push("The facility record mentions round-the-clock operation.");
@@ -214,7 +225,6 @@ function reasons(result, options) {
   if (!Number.isFinite(facility.occupancy)) caveats.push("Current occupancy and available capacity are unknown.");
   if (facility.lastVerified) caveats.push("Branch record last verified " + facility.lastVerified + ".");
   else caveats.push("The branch record has no verification date.");
-  if (!mode) caveats.push("The routing service did not supply a journey time. Distance is measured in a straight line.");
   return [section("Why this facility", why), section("Caveats", caveats)];
 }
 
@@ -255,13 +265,12 @@ function scoreBreakdown(result, options) {
       ? `The documented components share the weight according to your settings. Their weighted average is multiplied by this branch’s service match of ${result.assessment.match}/100.`
       : "The record has no scored component under the selected weights."));
   }
-  if (options.sort === "recommended" && scoreParts) {
-    const units = Number.isFinite(result.travelMinutes) ? "min equivalent" : "km equivalent";
+  if (options.sort === "recommended" && scoreParts && Number.isFinite(result.travelMinutes)) {
     const items = [
-      ["Travel", scoreParts.travel], ["Service confidence penalty", scoreParts.confidencePenalty],
+      [TRAVEL_MODES[options.travelMode].label + " time", result.travelMinutes], ["Service confidence penalty", scoreParts.confidencePenalty],
       ["Confidence-adjusted total", result.recommendedScore],
     ];
-    panel.append(table(["Recommended score component", units], items.map(([label, value]) => [label, number.format(value)]), "score-table", "Recommended score breakdown"));
+    panel.append(table(["Recommended score component", "min equivalent"], items.map(([label, value]) => [label, number.format(value)]), "score-table", "Recommended score breakdown"));
     panel.append(node("p", `This facility’s fit range is ${fitRanges[result.fitTier]}. The confidence-adjusted total orders branches in that range. Confidence below about 60/100 carries a steeper penalty. Higher fit ranges rank first.`));
   }
   if (priorityParts?.length) {
@@ -302,17 +311,14 @@ export function resultCard(result, index, options) {
   const heading = node("div");
   const place = [...new Set([facility.city, facility.district, facility.state, facility.pin && "PIN " + facility.pin, facility.ownership].map(text).filter(Boolean))];
   const beds = bedsOf(facility);
-  const travel = routingMetric(result, options.travelMode);
-  const distance = ["Straight-line distance", number.format(result.distanceKm) + " km"];
   heading.append(name);
   if (place.length) heading.append(node("p", place.join(" · "), "card-place"));
-  header.append(numberPin, heading, facts([travel ?? distance], "card-journey"));
+  header.append(numberPin, heading, facts(routingMetrics(result, options.travelMode), "card-journey"));
   const metrics = [
     ["Documented fit (/100)", Number.isFinite(result.fitScore) ? number.format(result.fitScore) : "Unavailable"],
     ["Service confidence (/100)", number.format(assessment.confidence)],
     [beds.label, beds.value],
   ];
-  if (travel) metrics.push(distance);
   if (Number.isFinite(facility.occupancy)) metrics.push(["Recorded occupancy", percent.format(facility.occupancy)]);
   const evidence = node("p", node("span", "Service evidence", "evidence-label"), "card-evidence");
   evidence.append(" ", node("strong", options.service), " · " + evidenceLabels[assessment.kind] + ".");
@@ -340,10 +346,11 @@ export function resultCard(result, index, options) {
 }
 
 export function contactsTable(results, {travelMode}) {
-  const columns = ["#", "Facility", "Phone", "Hours", "Address", "Straight-line km", TRAVEL_MODES[travelMode].label + " time"];
-  return table(columns, results.map(({facility, distanceKm, travelMinutes}, index) => [
+  const mode = TRAVEL_MODES[travelMode].label;
+  const columns = ["#", "Facility", "Phone", "Hours", "Address", mode + " time", routeDistanceLabel(travelMode)];
+  return table(columns, results.map(({facility, travelMinutes, routeDistanceKm}, index) => [
     String(index + 1), facility.name, phoneOf(facility), hoursOf(facility), addressOf(facility),
-    number.format(distanceKm), formatTravelTime(travelMinutes),
+    formatTravelTime(travelMinutes), formatRouteDistance(routeDistanceKm),
   ]), "classic-contacts", "Facility contact details in result order");
 }
 
@@ -351,11 +358,10 @@ export function facilityPopup(result, index, {origin, travelMode}) {
   const {facility} = result;
   const popup = node("div", "", "facility-popup");
   const beds = bedsOf(facility);
-  const travel = routingMetric(result, travelMode);
   popup.append(node("strong", `${index + 1}. ${facility.name}`));
   popup.append(facts([
     ["Address", addressOf(facility)], ["Phone", phoneOf(facility)], ["Hours", hoursOf(facility)],
-    ["Straight-line distance", number.format(result.distanceKm) + " km"], ...(travel ? [travel] : []),
+    ...routingMetrics(result, travelMode),
     [beds.label, beds.value],
   ], "card-facts"));
   popup.append(links([["Directions", directionsTo(facility, origin, travelMode)], ["Facility website", facility.website]]));

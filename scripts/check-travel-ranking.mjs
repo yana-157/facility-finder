@@ -3,7 +3,7 @@ import {createHash} from "node:crypto";
 import {readFile} from "node:fs/promises";
 import {pathToFileURL} from "node:url";
 import {setTimeout as delay} from "node:timers/promises";
-import {ROUTING_URL, attachClassicData, haversineKm, parseRouteMatrix, rankFacilities, resolveOrigin} from "../ranking.js";
+import {ROUTING_URL, attachClassicData, parseRouteMatrix, rankFacilities, resolveOrigin} from "../ranking.js";
 
 // Use a public city centroid, with the same facility snapshot and ranking code as the page.
 const file = process.argv[2] ? pathToFileURL(process.argv[2]) : new URL("../data.json", import.meta.url);
@@ -29,12 +29,20 @@ assert.match(preflight.headers.get("Access-Control-Allow-Methods") ?? "", /POST/
 async function requestMatrix(travelMode, origin) {
   for (let attempt = 0; ; attempt++) {
     const response = await fetch(ROUTING_URL, {
-      ...options, method: "POST", signal: AbortSignal.timeout(45000),
+      ...options, method: "POST", signal: AbortSignal.timeout(travelMode === "public_transport" ? 95000 : 45000),
       headers: {...headers, "Content-Type": "application/json"},
       body: JSON.stringify({origin: {lat: origin.lat, lon: origin.lon}, service, snapshotSha256, travelMode}),
     });
     assert.equal(response.headers.get("Access-Control-Allow-Origin"), siteOrigin);
-    if (response.ok) return parseRouteMatrix(await response.json(), data.matches[service], travelMode);
+    if (response.ok) {
+      const payload = await response.json();
+      const routeMatrix = parseRouteMatrix(payload, data.matches[service], travelMode);
+      const meters = new Map(payload.routes.filter(row => row.distanceMeters != null)
+        .map(row => [row.index, row.distanceMeters]));
+      assert.ok(new Set(meters.values()).size >= 2, `Need two distinct ${travelMode} route distances from the provider.`);
+      assert.deepEqual(routeMatrix.distanceMetersByIndex, meters);
+      return {routeMatrix, meters};
+    }
     const problem = await response.json().catch(() => null);
     const retryAfter = Number(response.headers.get("Retry-After"));
     if (response.status === 429 && attempt < 2 && retryAfter > 0 && retryAfter <= 60) {
@@ -98,12 +106,12 @@ const expectedCases = weightCases.map(fitWeights => ({
   }),
 }));
 
-function verifyRanking({origin, routeMatrix, fitWeights, evidence}) {
+function verifyRanking({origin, routeMatrix, meters, fitWeights, evidence}) {
   const {secondsByIndex, travelMode} = routeMatrix;
   const args = {service, origin, routeMatrix, limit: secondsByIndex.size, fitWeights};
   const eligible = evidence.filter(row => secondsByIndex.has(row.index) && row.confidence >= 25 && row.fit !== 0).map(row => {
     const minutes = secondsByIndex.get(row.index) / 60;
-    return {...row, minutes, cost: minutes + row.confidencePenalty, km: haversineKm(origin, data.facilities[row.index])};
+    return {...row, minutes, meters: meters.get(row.index) ?? null, cost: minutes + row.confidencePenalty};
   });
   const indices = rows => rows.map(row => row.index).sort((a, b) => a - b);
   const expectedMembers = indices(eligible);
@@ -112,14 +120,27 @@ function verifyRanking({origin, routeMatrix, fitWeights, evidence}) {
     `${travelMode}: Fastest eligibility differs from the snapshot.`);
   assert.deepEqual(fastest.map(row => row.travelMinutes), eligible.map(row => row.minutes).sort((a, b) => a - b),
     `${travelMode}: Fastest must sort eligible branches by provider minutes.`);
-  for (const sort of ["straightLine", "fit", "confidence", "beds", "name", "occupancy", "priorities"]) {
-    const alternate = rankFacilities(data, {...args, sort, priorities: ["evidence", "travel"]}).results;
+  const byLength = rankFacilities(data, {...args, sort: "routeDistance"}).results;
+  const known = eligible.filter(row => row.meters !== null).sort((a, b) => a.meters - b.meters);
+  const missing = eligible.filter(row => row.meters === null);
+  if (!fitWeights) assert.ok(new Set(known.map(row => row.meters)).size >= 2,
+    `${travelMode}: the published example needs two eligible branches with distinct route distances.`);
+  assert.deepEqual(byLength.map(row => row.assessment.index), [...known, ...missing].map(row => row.index),
+    `${travelMode}: shortest route must sort by provider metres and put unavailable distances last.`);
+  for (const row of byLength) {
+    const length = meters.get(row.assessment.index);
+    assert.equal(row.routeDistanceKm, length == null ? null : length / 1000,
+      `${travelMode}: displayed kilometres differ from the route measurement.`);
+  }
+  for (const sort of ["fit", "confidence", "beds", "name", "occupancy"]) {
+    const alternate = rankFacilities(data, {...args, sort}).results;
     assert.deepEqual(indices(alternate.map(row => row.assessment)), expectedMembers,
       `${travelMode}: ${sort} must exclude confidence below 25 and fit of zero, while permitting unknown fit.`);
   }
 
   const expected = eligible.filter(row => row.fit > 0)
-    .sort((a, b) => b.tier - a.tier || a.cost - b.cost || a.minutes - b.minutes || a.km - b.km);
+    .sort((a, b) => b.tier - a.tier || a.cost - b.cost || a.minutes - b.minutes
+      || Number(a.meters === null) - Number(b.meters === null) || (a.meters ?? 0) - (b.meters ?? 0));
   const recommended = rankFacilities(data, args).results;
   assert.deepEqual(recommended.map(row => row.assessment.index), expected.map(row => row.index),
     `${travelMode}: Recommended order must use descending fit tier, then ascending travel plus confidence penalty.`);
@@ -138,19 +159,20 @@ const jaipurMatrices = new Set();
 const observedTiers = new Set();
 for (const travelMode of ["driving", "walking", "cycling", "public_transport"]) {
   const origin = travelMode === "public_transport" ? mumbai : jaipur;
-  const routeMatrix = await requestMatrix(travelMode, origin);
+  const {routeMatrix, meters} = await requestMatrix(travelMode, origin);
   assert.equal(routeMatrix.travelMode, travelMode);
   const seconds = routeMatrix.secondsByIndex;
   assert.ok(new Set(seconds.values()).size >= 2, `Need two distinct ${travelMode} times to verify the ranking.`);
   if (origin === jaipur) jaipurMatrices.add(JSON.stringify([...seconds].sort(([a], [b]) => a - b)));
   for (const test of expectedCases) {
-    const {recommended, fastest} = verifyRanking({origin, routeMatrix, ...test});
+    const {recommended, fastest} = verifyRanking({origin, routeMatrix, meters, ...test});
     for (const row of recommended) observedTiers.add(row.fitTier);
     if (!test.fitWeights) {
       const first = recommended[0];
-      const outcome = first ? `${first.facility.name} (fit ${first.fitScore.toFixed(1)}, ${first.travelMinutes.toFixed(1)} minutes)`
+      const length = first?.routeDistanceKm == null ? "route distance unavailable" : `${first.routeDistanceKm.toFixed(1)} km`;
+      const outcome = first ? `${first.facility.name} (fit ${first.fitScore.toFixed(1)}, ${first.travelMinutes.toFixed(1)} minutes, ${length})`
         : "no reachable branch with eligible confidence and documented positive fit";
-      console.log(`${origin.label} ${service}, ${travelMode}: ${seconds.size} routed; ${fastest.length} eligible for Fastest, ${recommended.length} for Recommended. Recommended: ${outcome}.`);
+      console.log(`${origin.label} ${service}, ${travelMode}: ${seconds.size} timed routes, ${meters.size} with route distances; ${fastest.length} eligible for Fastest, ${recommended.length} for Recommended. Recommended: ${outcome}.`);
     }
   }
 }

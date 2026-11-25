@@ -81,14 +81,27 @@ export function parseRouteMatrix(payload, assessments, travelMode = "driving", a
   }
   const expected = new Set(assessments.map(row => row.index));
   const secondsByIndex = new Map();
-  for (const {index, seconds} of payload.routes) {
+  const distanceMetersByIndex = new Map();
+  for (const {index, seconds, distanceMeters} of payload.routes) {
     if (!expected.has(index) || secondsByIndex.has(index) || !Number.isFinite(seconds)
         || seconds < 0 || seconds > 10800) {
       throw new Error("Invalid facility travel time.");
     }
     secondsByIndex.set(index, seconds);
+    if (distanceMeters != null) {
+      if (!Number.isFinite(distanceMeters) || distanceMeters < 0) throw new Error("Invalid facility route distance.");
+      distanceMetersByIndex.set(index, distanceMeters);
+    }
   }
-  const matrix = {secondsByIndex, calculatedAt, travelMode};
+  const matrix = {secondsByIndex, distanceMetersByIndex, calculatedAt, travelMode};
+  if (Object.hasOwn(payload, "departureTime")) {
+    const timestamp = payload.departureTime;
+    const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/u;
+    if (typeof timestamp !== "string" || !iso.test(timestamp) || !Number.isFinite(Date.parse(timestamp))) {
+      throw new Error("Invalid routing departure time.");
+    }
+    matrix.departureTime = new Date(timestamp);
+  }
   if (Object.hasOwn(payload, "routedOrigin")) {
     const point = payload.routedOrigin;
     if (allowOriginAdjustment !== true || !inIndia(point?.lat, point?.lon)) {
@@ -197,14 +210,20 @@ function confidencePenalty(confidence) {
   return CONFIDENCE_PENALTY_MAX_KM * (curve(clamped) - curve(100)) / (curve(0) - curve(100));
 }
 
+function compareRouteDistance(left, right) {
+  if (left.routeDistanceKm === right.routeDistanceKm) return 0;
+  return (left.routeDistanceKm ?? Infinity) - (right.routeDistanceKm ?? Infinity);
+}
+
 function compareRecommended(left, right) {
   return (right.fitTier ?? -1) - (left.fitTier ?? -1)
     || left.recommendedScore - right.recommendedScore || left.scoreParts.travel - right.scoreParts.travel
-    || left.distanceKm - right.distanceKm;
+    || (left.travelMinutes == null ? left.distanceKm - right.distanceKm : compareRouteDistance(left, right));
 }
 
 const OTHER_SORTS = {
   straightLine: (left, right) => left.distanceKm - right.distanceKm,
+  routeDistance: compareRouteDistance,
   distance: (left, right) => left.scoreParts.travel - right.scoreParts.travel,
   confidence: (left, right) => right.assessment.confidence - left.assessment.confidence,
   beds: (left, right) => (right.facility.beds ?? -1) - (left.facility.beds ?? -1),
@@ -382,7 +401,7 @@ export function rankFacilities(data, {
     if (assessment.kind !== "mention" && !EXACT_EVIDENCE.has(assessment.kind)) continue;
     if (!Number.isFinite(assessment.confidence)) continue;
     if (assessment.match !== 40 && assessment.match !== 100) continue;
-    if (routeMatrix && !routeMatrix.secondsByIndex.has(assessment.index)) continue;
+    if (routeMatrix ? !routeMatrix.secondsByIndex.has(assessment.index) : sort === "routeDistance") continue;
     candidateCount++;
     if (assessment.confidence < MIN_CONFIDENCE) {
       lowConfidenceCount++;
@@ -395,6 +414,7 @@ export function rankFacilities(data, {
       if (!explicitSort) continue;
     }
     const distanceKm = haversineKm(routeMatrix?.routedOrigin ?? origin, facility);
+    const distanceMeters = routeMatrix?.distanceMetersByIndex?.get(assessment.index);
     const travelMinutes = routeMatrix ? routeMatrix.secondsByIndex.get(assessment.index) / 60 : null;
     const travel = travelMinutes ?? distanceKm;
     const confidenceCost = confidencePenalty(assessment.confidence) * penaltyScale;
@@ -402,6 +422,7 @@ export function rankFacilities(data, {
       facility,
       assessment,
       distanceKm,
+      routeDistanceKm: distanceMeters == null ? null : distanceMeters / 1000,
       travelMinutes,
       driveMinutes: routeMatrix?.travelMode === "driving" ? travelMinutes : null,
       scoreParts: {travel, confidencePenalty: confidenceCost},
@@ -412,7 +433,8 @@ export function rankFacilities(data, {
   }
   if (sort === "priorities") scorePriorities(ranked, priorities);
   const compare = explicitSort ? OTHER_SORTS[sort] : null;
-  ranked.sort(compare ? (left, right) => compare(left, right) || compareRecommended(left, right) : compareRecommended);
+  if (sort === "routeDistance") ranked.sort(compare);
+  else ranked.sort(compare ? (left, right) => compare(left, right) || compareRecommended(left, right) : compareRecommended);
   ranked.forEach((result, index) => {
     result.baselineRank = index + 1;
   });
