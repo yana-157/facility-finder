@@ -157,9 +157,40 @@ function section(title, bullets) {
   return area;
 }
 
+export function formatTravelTime(minutes) {
+  if (!Number.isFinite(minutes) || minutes < 0) return "Unavailable";
+  if (minutes < 1) return "Under 1 min";
+  const wholeMinutes = Math.round(minutes);
+  const hours = Math.floor(wholeMinutes / 60);
+  const remainder = wholeMinutes % 60;
+  if (!hours) return `${remainder} min`;
+  return remainder ? `${hours} hr ${remainder} min` : `${hours} hr`;
+}
+
 function routingMetric(result, travelMode) {
   if (!Number.isFinite(result.travelMinutes)) return null;
-  return [TRAVEL_MODES[travelMode].label + " time", number.format(result.travelMinutes) + " min"];
+  return [TRAVEL_MODES[travelMode].label + " time", formatTravelTime(result.travelMinutes)];
+}
+
+function rankExplanation(result, index, options) {
+  if (options.sort !== "recommended") return "";
+  if (index === 0 && result.projectedLoad && result.baselineRank > 1)
+    return `The workload comparison moved this facility up from #${result.baselineRank} within the same fit range.`;
+  const later = options.activeResults?.slice(index + 1) ?? [];
+  const routed = Number.isFinite(result.travelMinutes);
+  const displayMeasure = row => routed ? formatTravelTime(row.travelMinutes) : number.format(row.distanceKm);
+  const shorter = later.filter(row => row.fitScore > 0 && row.scoreParts.travel < result.scoreParts.travel
+    && displayMeasure(row) !== displayMeasure(result));
+  const lowerFit = shorter.find(row => row.fitTier < result.fitTier);
+  const alternative = lowerFit || shorter.find(row => row.fitTier === result.fitTier
+    && result.assessment.confidence > row.assessment.confidence && result.recommendedScore < row.recommendedScore);
+  if (!alternative) return "";
+  const rank = index + 2 + later.indexOf(alternative);
+  const journey = routed ? `a shorter estimated ${TRAVEL_MODES[options.travelMode].trip} (${displayMeasure(alternative)})`
+    : `a shorter straight-line distance (${displayMeasure(alternative)} km)`;
+  const reason = lowerFit ? `Its documented fit of ${number.format(alternative.fitScore)}/100 places it in a lower fit range.`
+    : `Within the same fit range, its lower service confidence (${number.format(alternative.assessment.confidence)}/100) puts it behind this facility.`;
+  return `#${rank} ${alternative.facility.name} has ${journey}. ${reason}`;
 }
 
 function reasons(result, options) {
@@ -231,7 +262,7 @@ function scoreBreakdown(result, options) {
       ["Confidence-adjusted total", result.recommendedScore],
     ];
     panel.append(table(["Recommended score component", units], items.map(([label, value]) => [label, number.format(value)]), "score-table", "Recommended score breakdown"));
-    panel.append(node("p", "This total orders branches within the same fit range. Confidence below about 60/100 carries a steeper penalty. Higher fit ranges rank first."));
+    panel.append(node("p", `This facility’s fit range is ${fitRanges[result.fitTier]}. The confidence-adjusted total orders branches in that range. Confidence below about 60/100 carries a steeper penalty. Higher fit ranges rank first.`));
   }
   if (priorityParts?.length) {
     panel.append(table(["Personal priority", "Value", "Weight"], priorityParts.map(({criterion, value, weight}) =>
@@ -265,31 +296,30 @@ export function resultCard(result, index, options) {
   name.id = "facility-title-" + rank;
   card.setAttribute("aria-labelledby", name.id);
   const header = node("div", "", "card-header");
-  const numberPin = node("span", String(rank), "rank");
+  const numberPin = node("span", node("span", String(rank)), "rank");
+  numberPin.setAttribute("role", "img");
   numberPin.setAttribute("aria-label", "Rank " + rank);
   const heading = node("div");
   const place = [...new Set([facility.city, facility.district, facility.state, facility.pin && "PIN " + facility.pin, facility.ownership].map(text).filter(Boolean))];
-  heading.append(name, node("p", place.join(" · "), "card-place"));
-  header.append(numberPin, heading);
   const beds = bedsOf(facility);
   const travel = routingMetric(result, options.travelMode);
-  const primaryMetrics = [
+  const distance = ["Straight-line distance", number.format(result.distanceKm) + " km"];
+  heading.append(name);
+  if (place.length) heading.append(node("p", place.join(" · "), "card-place"));
+  header.append(numberPin, heading, facts([travel ?? distance], "card-journey"));
+  const metrics = [
     ["Documented fit (/100)", Number.isFinite(result.fitScore) ? number.format(result.fitScore) : "Unavailable"],
     ["Service confidence (/100)", number.format(assessment.confidence)],
-    travel ?? ["Straight-line distance", number.format(result.distanceKm) + " km"],
+    [beds.label, beds.value],
   ];
-  const secondaryMetrics = [[beds.label, beds.value]];
-  if (travel) secondaryMetrics.unshift(["Straight-line distance", number.format(result.distanceKm) + " km"]);
-  if (Number.isFinite(facility.occupancy)) secondaryMetrics.push(["Recorded occupancy", percent.format(facility.occupancy)]);
-  const serviceEvidence = `${options.service} · ${evidenceLabels[assessment.kind]}.`;
-  const evidenceSummary = assessment.kind === "mention"
-    ? serviceEvidence + " Call this branch to confirm it offers the service." : serviceEvidence;
-  card.append(header, node("p", evidenceSummary, "card-evidence"),
-    facts(primaryMetrics, "card-metrics"), facts(secondaryMetrics, "card-metrics secondary-metrics"));
-  if (options.sort === "recommended") {
-    const units = travel ? "min equivalent" : "km equivalent";
-    card.append(node("p", `Fit range ${fitRanges[result.fitTier]} · confidence-adjusted total ${number.format(result.recommendedScore)} ${units}.`, "card-note"));
-  }
+  if (travel) metrics.push(distance);
+  if (Number.isFinite(facility.occupancy)) metrics.push(["Recorded occupancy", percent.format(facility.occupancy)]);
+  const evidence = node("p", node("span", "Service evidence", "evidence-label"), "card-evidence");
+  evidence.append(" ", node("strong", options.service), " · " + evidenceLabels[assessment.kind] + ".");
+  if (assessment.kind === "mention") evidence.append(" Call this branch to confirm it offers the service.");
+  card.append(header, evidence, facts(metrics, "card-metrics"));
+  const explanation = rankExplanation(result, index, options);
+  if (explanation) card.append(node("p", explanation, "rank-explanation"));
   if (result.priorityParts?.length) card.append(node("p", "Personal criteria score " + (Number.isFinite(result.priorityScore) ? number.format(result.priorityScore) + "/100" : "unavailable"), "card-note"));
   const actions = links([["Directions", directionsTo(facility, options.origin, options.travelMode)]]);
   const phone = node("span", text(facility.phone) ? "Phone " : "Phone not listed");
@@ -303,15 +333,17 @@ export function resultCard(result, index, options) {
   const website = link("Facility website", facility.website);
   if (website) facilityDetails.append(website);
   facilityDetails.append(...reasons(result, options));
-  card.append(actions, facilityDetails, sourceEvidence(result, options), scoreBreakdown(result, options));
+  const disclosures = node("div", "", "facility-disclosures");
+  disclosures.append(facilityDetails, sourceEvidence(result, options), scoreBreakdown(result, options));
+  card.append(actions, disclosures);
   return card;
 }
 
 export function contactsTable(results, {travelMode}) {
-  const columns = ["#", "Facility", "Phone", "Hours", "Address", "Straight-line km", TRAVEL_MODES[travelMode].label + " min"];
+  const columns = ["#", "Facility", "Phone", "Hours", "Address", "Straight-line km", TRAVEL_MODES[travelMode].label + " time"];
   return table(columns, results.map(({facility, distanceKm, travelMinutes}, index) => [
     String(index + 1), facility.name, phoneOf(facility), hoursOf(facility), addressOf(facility),
-    number.format(distanceKm), Number.isFinite(travelMinutes) ? number.format(travelMinutes) : "Unavailable",
+    number.format(distanceKm), formatTravelTime(travelMinutes),
   ]), "classic-contacts", "Facility contact details in result order");
 }
 

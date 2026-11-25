@@ -1,6 +1,6 @@
 import { attachClassicData, haversineKm, parseRouteMatrix, resolveOrigin, rankFacilities, RouteOriginError, ROUTING_URL, TRAVEL_MODES } from "./ranking.js?v=6fd04098";
-import { facilityMap } from "./map.js?v=b25de678";
-import { resultCard, contactsTable } from "./results.js?v=bf0d8c46";
+import { facilityMap } from "./map.js?v=d6a60b1b";
+import { resultCard, contactsTable, formatTravelTime } from "./results.js?v=faa9e861";
 
 const get = id => document.getElementById(id);
 const form = get("finder-form");
@@ -35,6 +35,7 @@ const list = get("result-list");
 const context = get("search-context");
 const loadStatus = get("load-status");
 const routeStatus = get("route-status");
+const originStatus = get("origin-status");
 const drivingAlternatives = get("driving-alternatives");
 const controls = get("results-controls");
 const mapSelection = get("map-selection");
@@ -109,7 +110,7 @@ function focusResult(index, fromCard = false) {
   const title = element("strong", `${index + 1}. ${result.facility.name}`);
   const travel = result.travelMinutes == null
     ? `${result.distanceKm.toFixed(1)} km straight line`
-    : `${formatDecimal.format(result.travelMinutes)} min · ${TRAVEL_MODES[travelMode.value].label}`;
+    : `${formatTravelTime(result.travelMinutes)} · ${TRAVEL_MODES[travelMode.value].label}`;
   const distance = document.createTextNode(` · ${travel} `);
   const jump = element("button", "View option", "button-text");
   jump.type = "button";
@@ -206,13 +207,15 @@ function renderSearch(routeMatrix) {
   get("travel-sort").textContent = routeMatrix ? `Fastest ${mode.trip}` : "Shortest straight-line distance";
   get("geographic-sort").hidden = !routeMatrix && sort.value !== "straightLine";
   let sortNote = count && sort.value === "recommended"
-    ? "Recommended shows higher fit ranges first. Within each range, it compares travel plus a penalty for lower service confidence." : "";
-  if (sort.value === "straightLine") sortNote = "Ordered by straight-line distance from your starting point.";
+    ? "Facilities in the strongest fit range come first. Within each range, shorter trips and stronger service evidence rank higher." : "";
+  if (count && sort.value === "distance" && routeMatrix) sortNote = `Facilities with qualifying service evidence are ordered by estimated ${mode.label.toLowerCase()} time.`;
+  if (sort.value === "straightLine" || (sort.value === "distance" && !routeMatrix)) sortNote = "Ordered by straight-line distance from your starting point.";
   if (count && sort.value === "occupancy" && activeResults.every(item => item.facility.occupancy == null))
     sortNote = "These branches have no recorded occupancy. Ties use the available ranking evidence.";
   if (count && sort.value === "priorities" && activeResults.every(item => item.priorityScore == null))
     sortNote = "The available records do not support a score for these priorities. Ties use the available ranking evidence.";
   status(get("sort-status"), sortNote);
+  status(originStatus, "");
   if (routeMatrix) {
     routeStatus.hidden = false;
     routeStatus.replaceChildren(externalLink("TravelTime", "https://traveltime.com/"),
@@ -220,12 +223,17 @@ function renderSearch(routeMatrix) {
     if (adjusted) {
       const km = haversineKm(origin, routedOrigin);
       const separation = km < 1 ? `${formatNumber.format(Math.round(km * 1000))} m` : `${formatDecimal.format(km)} km`;
-      routeStatus.append(
-        ` The routing start (${startLabel}) is ${separation} in a straight line from your entered coordinates (${origin.lat}, ${origin.lon}). Travel times exclude the journey to that starting point. Facility distances and directions also start there. `,
+      const detail = element("details", "", "origin-details");
+      detail.append(element("summary", "Starting point details"));
+      const sources = element("p");
+      sources.append(`From your coordinates (${origin.lat}, ${origin.lon}) to the road (${startLabel}). `,
         externalLink("Road lookup by FOSSGIS", "https://routing.openstreetmap.de/about.html"), " · ",
         externalLink("© OpenStreetMap contributors", "https://www.openstreetmap.org/copyright"), " · ",
-        externalLink("Fix the map", "https://www.openstreetmap.org/fixthemap"),
-      );
+        externalLink("Fix the map", "https://www.openstreetmap.org/fixthemap"));
+      detail.append(sources);
+      originStatus.replaceChildren(element("strong", `Your route starts ${separation} from the point you entered.`),
+        document.createTextNode(" Travel times and directions start at the road. The estimate excludes the gap to your point."), detail);
+      originStatus.hidden = false;
     }
   } else {
     status(routeStatus, `${mode.label} estimates are unavailable. The travel comparison uses straight-line distance.`);
@@ -247,7 +255,7 @@ function renderSearch(routeMatrix) {
       : "The published snapshot has no paired evidence on patient-reported respect and clinical outcomes for these facilities. The displayed order uses your selected sort.";
   }
   status(get("equity-status"), equityStatus);
-  const cardOptions = {service: service.value, serviceInfo, travelMode: travelMode.value, sort: sort.value, origin: routedOrigin ?? origin,
+  const cardOptions = {activeResults, service: service.value, serviceInfo, travelMode: travelMode.value, sort: sort.value, origin: routedOrigin ?? origin,
     fitWeights: weights, snapshotDate: data.classifiedAsOf, sourceUrl: data.sourceUrl, projectionSourceUrl: data.projectionSourceUrl,
     onShowMap: index => focusResult(index, true)};
   list.replaceChildren(...activeResults.map((item, index) => resultCard(item, index, cardOptions)));
@@ -255,7 +263,7 @@ function renderSearch(routeMatrix) {
   get("contact-table").replaceChildren(...(count ? [contactsTable(activeResults, cardOptions)] : []));
   if (!count) list.append(element("p", emptyHint, "empty-card"));
   get("map-context").textContent = adjusted
-    ? `Entered coordinates ${place}. The green arrow marks the routing start at ${startLabel}.` : place;
+    ? `The house marks your location. The arrow marks the route start at ${startLabel}.` : place;
   status(mapSelection, "");
   map.show(origin, activeResults, {travelMode: travelMode.value, routedOrigin: adjusted ? {...routedOrigin, label: startLabel} : undefined});
 }
@@ -304,6 +312,7 @@ function clearResults(message) {
   status(mapSelection, "");
   status(loadStatus, "");
   status(routeStatus, "");
+  status(originStatus, "");
   status(get("sort-status"), "");
   context.textContent = message;
   get("map-context").textContent = origin?.label ?? "India";
@@ -342,7 +351,11 @@ async function search({ focus = true } = {}) {
   get("finder-output").dataset.searched = "true";
   const selectedMode = travelMode.value;
   clearResults(`Finding ${TRAVEL_MODES[selectedMode].label.toLowerCase()} times for ${service.value} near ${origin.label}…`);
-  if (focus) scrollTo(get("results-title"));
+  if (focus) {
+    const heading = get("results-title");
+    heading.focus({ preventScroll: true });
+    heading.scrollIntoView({ block: "start" });
+  }
   let matrix;
   try {
     matrix = await fetchRoutes(origin, service.value, selectedMode, locationType.value === "coordinates");
@@ -364,10 +377,13 @@ function rerank() {
   if (displayedRouting !== undefined) renderSearch(displayedRouting);
 }
 
+function locationReady() {
+  if (locationType.value === "coordinates") return latitude.value.trim() && longitude.value.trim();
+  return locationType.value === "pin" ? /^\d{6}$/u.test(query.value.trim()) : query.value.trim();
+}
+
 function updateSearchButton() {
-  const hasLocation = locationType.value === "coordinates" ? latitude.value.trim() && longitude.value.trim()
-    : locationType.value === "pin" ? /^\d{6}$/.test(query.value.trim()) : query.value.trim();
-  get("search-button").disabled = !(data && service.value && hasLocation);
+  get("search-button").disabled = !(data && service.value);
 }
 
 function selectService() {
@@ -397,7 +413,7 @@ function updateServices() {
 function updateGroups() {
   const key = groupField();
   const groups = [...new Set(data.services.map(item => item[key]))].sort();
-  get("service-group-label").textContent = key === "area" ? "Afflicted body area" : "Specialty";
+  get("service-group-label").textContent = key === "area" ? "Body area" : "Specialty";
   const choices = groups.map(value => new Option(value, value));
   if (key === "specialty") choices.unshift(new Option("All specialties", ""));
   group.replaceChildren(...choices);
@@ -489,7 +505,7 @@ function locationChanged() {
   clearError();
   invalidateSearch();
   updateSearchButton();
-  if (searchStarted && !get("search-button").disabled) {
+  if (searchStarted && locationReady() && !get("search-button").disabled) {
     locationTimer = setTimeout(() => search({focus: false}), 700);
   }
 }
@@ -503,6 +519,24 @@ for (const input of [query, state, latitude, longitude]) input.addEventListener(
 
 buildPriorityControls();
 
+function openLinkedCitySearch() {
+  const params = new URLSearchParams(window.location.search);
+  const city = params.get("city")?.trim();
+  const selected = params.get("service");
+  const mode = params.get("mode") || "driving";
+  const region = params.get("state") || "";
+  if (!city || city.length > 80 || region.length > 80 || !Object.hasOwn(TRAVEL_MODES, mode)
+    || !data.services.some(item => item.label === selected)) return;
+  service.value = selected;
+  selectService();
+  locationType.value = "city";
+  switchLocation();
+  query.value = city;
+  state.value = region;
+  travelMode.value = mode;
+  search({focus: window.location.hash === "#results"});
+}
+
 async function start() {
   try {
     const [response, classic] = await Promise.all(["./data.json", "./classic-data.json"].map(file =>
@@ -515,15 +549,15 @@ async function start() {
     if (!Array.isArray(data.services) || !Array.isArray(data.facilities)) throw new Error("The snapshot is incomplete.");
     attachClassicData(data, await classic.json(), snapshotSha256);
     updateGroups();
-    get("snapshot-count").textContent = `${formatNumber.format(data.facilities.length)} facility records`;
+    get("snapshot-count").textContent = `${formatNumber.format(data.facilities.length)} facilities`;
     const published = new Date(data.publishedAt);
     get("snapshot-date").textContent = Number.isNaN(published.getTime())
       ? "Publication date unavailable"
-      : `Facility data published ${formatPublication.format(published)} UTC`;
+      : `${formatPublication.format(published)} UTC`;
     const assessed = new Date(data.classifiedAsOf || "");
     get("evidence-date").textContent = Number.isNaN(assessed.getTime())
       ? "Evidence assessment date unavailable"
-      : `Service evidence assessed ${formatDate.format(assessed)}`;
+      : formatDate.format(assessed);
     const href = safeLink(data.sourceUrl);
     if (href) get("source-link").href = href;
     get("search-fields").disabled = false;
@@ -531,8 +565,10 @@ async function start() {
     switchLocation();
     updateSearchButton();
     updateComparisonHelp();
+    openLinkedCitySearch();
   } catch {
-    get("snapshot-count").textContent = "Facility data unavailable";
+    get("snapshot-count").textContent = "health facilities";
+    get("snapshot-date").textContent = get("evidence-date").textContent = "Unavailable";
     markError("The facility snapshot could not be loaded. Refresh this page to retry.", [], false);
     context.textContent = "Search will be available when the published snapshot loads.";
   }
