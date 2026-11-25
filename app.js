@@ -436,7 +436,6 @@ drivingAlternatives.addEventListener("click", () => {
   search();
 });
 get("adjust-fit").addEventListener("click", () => {
-  setSidebar(true);
   get("fit-settings").open = true;
   weightInputs.capability.focus();
 });
@@ -474,20 +473,6 @@ locationType.addEventListener("change", () => {
 });
 for (const input of [query, state, latitude, longitude]) input.addEventListener("input", locationChanged);
 
-const sidebarToggle = get("sidebar-toggle");
-const wide = window.matchMedia("(min-width: 961px)");
-function setSidebar(open) {
-  sidebarToggle.setAttribute("aria-expanded", String(open));
-  get("settings-sidebar").inert = !open;
-}
-setSidebar(wide.matches);
-wide.addEventListener("change", () => setSidebar(wide.matches));
-sidebarToggle.addEventListener("click", () => setSidebar(sidebarToggle.getAttribute("aria-expanded") !== "true"));
-function closeSidebar() { setSidebar(false); sidebarToggle.focus(); }
-get("sidebar-close").addEventListener("click", closeSidebar);
-document.addEventListener("keydown", event => {
-  if (event.key === "Escape" && !wide.matches && sidebarToggle.getAttribute("aria-expanded") === "true") closeSidebar();
-});
 buildPriorityControls();
 
 async function start() {
