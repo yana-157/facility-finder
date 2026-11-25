@@ -1,12 +1,11 @@
-import { attachClassicData, haversineKm, parseRouteMatrix, resolveOrigin, rankFacilities, RouteOriginError, ROUTING_URL, TRAVEL_MODES } from "./ranking.js?v=eddbfb96";
-import { facilityMap } from "./map.js?v=d6a60b1b";
-import { resultCard, contactsTable, formatTravelTime } from "./results.js?v=faa9e861";
+import { attachClassicData, haversineKm, parseRouteMatrix, resolveOrigin, rankFacilities, RouteOriginError, ROUTING_URL, TRAVEL_MODES } from "./ranking.js?v=eecbb77a";
+import { facilityMap } from "./map.js?v=5061eb7f";
+import { resultCard, contactsTable, formatTravelTime } from "./results.js?v=959f2650";
 
 const get = id => document.getElementById(id);
 const form = get("finder-form");
 const service = get("service");
 const travelMode = get("travel-mode");
-const advanced = get("advanced-options");
 const equity = get("consider-equity");
 const workloadUrgencyText = "Workload comparisons are available for routine, non-time-critical care.";
 const equityUrgencyText = "Equity comparisons are paused for time-critical care.";
@@ -16,9 +15,8 @@ const weightInputs = {
   quality: get("weight-quality"), freshness: get("weight-confidence"),
 };
 const priorityLabels = {
-  travel: "Travel (shorter is better)", evidence: "Service evidence",
-  capability: "Equipment & staff match", availability: "Open around the clock",
-  quality: "Accreditation & rating", freshness: "Up-to-date record", spare: "Spare capacity (lower occupancy)",
+  fit: "Facility fit", travel: "Travel (shorter is better)",
+  evidence: "Service evidence", spare: "Spare capacity (lower occupancy)",
 };
 const priorityOrder = [];
 const locationType = get("location-type");
@@ -173,7 +171,7 @@ function renderSearch(routeMatrix) {
   const result = rankFacilities(data, {
     service: service.value, origin, severity: severity.value, sort: sort.value,
     considerLoad: considerLoad.checked, limit: Number(limit.value), routeMatrix, fitWeights: weights,
-    priorities: advanced.checked ? priorityOrder : [],
+    priorities: priorityOrder,
   });
   activeResults = result.results;
   const place = origin.label + (origin.approximate ? " (approximate)" : "");
@@ -421,22 +419,19 @@ function updateGroups() {
 }
 
 function syncPriorities() {
-  const enabled = advanced.checked && priorityOrder.length > 0;
-  get("priority-controls").hidden = !advanced.checked;
+  const enabled = priorityOrder.length > 0;
+  if (!enabled && sort.value === "priorities") sort.value = "recommended";
   get("sort-priorities").hidden = !enabled;
   get("sort-priorities").disabled = !enabled;
-  if (!enabled && sort.value === "priorities") sort.value = "recommended";
-  for (const [key, label] of Object.entries(priorityLabels)) {
+  for (const key of Object.keys(priorityLabels)) {
     const order = get("order-" + key);
     const position = priorityOrder.indexOf(key);
-    order.hidden = position === -1;
-    if (position < 0) continue;
-    order.setAttribute("aria-label", "Priority rank for " + label);
-    order.replaceChildren(...priorityOrder.map((_, i) => new Option(String(i + 1), String(i))));
-    order.value = String(position);
+    const slots = priorityOrder.length + (position === -1 ? 1 : 0);
+    const ranks = Array.from({length: slots}, (_, index) => new Option(String(index + 1), String(index)));
+    order.replaceChildren(new Option("Off", ""), ...ranks);
+    order.value = position === -1 ? "" : String(position);
   }
-  status(get("priority-summary"), priorityOrder.length
-    ? "Priority order: " + priorityOrder.map(key => priorityLabels[key]).join(" · ") : "");
+  status(get("priority-summary"), priorityOrder.map((key, index) => `${index + 1}. ${priorityLabels[key]}`).join(" · "));
   updateComparisonHelp();
   rerank();
 }
@@ -444,27 +439,20 @@ function syncPriorities() {
 function buildPriorityControls() {
   for (const [key, text] of Object.entries(priorityLabels)) {
     const row = element("div", "", "priority-row");
-    const label = element("label");
-    const choice = element("input");
-    choice.type = "checkbox";
-    choice.id = "priority-" + key;
+    const label = element("label", text);
     const order = element("select");
     order.id = "order-" + key;
-    order.hidden = true;
-    choice.addEventListener("change", () => {
-      if (choice.checked) priorityOrder.push(key);
-      else priorityOrder.splice(priorityOrder.indexOf(key), 1);
-      syncPriorities();
-    });
+    label.htmlFor = order.id;
     order.addEventListener("change", () => {
-      priorityOrder.splice(priorityOrder.indexOf(key), 1);
-      priorityOrder.splice(Number(order.value), 0, key);
+      const previous = priorityOrder.indexOf(key);
+      if (previous !== -1) priorityOrder.splice(previous, 1);
+      if (order.value !== "") priorityOrder.splice(Number(order.value), 0, key);
       syncPriorities();
     });
-    label.append(choice, document.createTextNode(" " + text));
     row.append(label, order);
     get("priority-list").append(row);
   }
+  syncPriorities();
 }
 
 form.addEventListener("submit", event => {
@@ -483,7 +471,6 @@ get("adjust-fit").addEventListener("click", () => {
   get("fit-settings").open = true;
   weightInputs.capability.focus();
 });
-advanced.addEventListener("change", syncPriorities);
 severity.addEventListener("change", () => { updateComparisonHelp(); rerank(); });
 sort.addEventListener("change", () => { updateComparisonHelp(); rerank(); });
 for (const control of [equity, considerLoad]) control.addEventListener("change", rerank);

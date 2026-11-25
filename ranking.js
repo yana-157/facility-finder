@@ -20,7 +20,7 @@ export const TRAVEL_MODES = {
   public_transport: {label: "Public transport", trip: "public transport trip", mapsMode: "transit"},
 };
 export const DEFAULT_FIT_WEIGHTS = {capability: 0.4, availability: 0.25, quality: 0.2, freshness: 0.15};
-const PRIORITIES = ["travel", "evidence", "capability", "availability", "quality", "freshness", "spare"];
+const PRIORITIES = ["fit", "travel", "evidence", "capability", "availability", "quality", "freshness", "spare"];
 const MAX_EXTRA_MINUTES = 15;
 const MINUTES_PER_KM_EQUIVALENT = 2;
 
@@ -262,7 +262,8 @@ function scorePriorities(ranked, priorities) {
   });
   for (const result of ranked) {
     const values = {
-      ...result.fitComponents, travel: max === min ? 1 : (max - result.scoreParts.travel) / (max - min),
+      ...result.fitComponents, fit: result.fitScore === null ? null : result.fitScore / 100,
+      travel: max === min ? 1 : (max - result.scoreParts.travel) / (max - min),
       evidence: result.assessment.confidence / 100,
       spare: Number.isFinite(result.facility.occupancy) ? 1 - result.facility.occupancy : null,
     };

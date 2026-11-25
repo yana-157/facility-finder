@@ -7,10 +7,10 @@
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>Find a health facility · Facility Finder</title>
   <link rel="stylesheet" href="./fonts/roboto.css">
-  <link rel="stylesheet" href="./styles.css?v=b431ac8a">
+  <link rel="stylesheet" href="./styles.css?v=c821743c">
   <link rel="stylesheet" href="./results.css?v=92da8587">
   <link rel="stylesheet" href="./directory.css?v=89f815fa">
-  <script type="module" src="./app.js?v=91612b4e"></script>
+  <script type="module" src="./app.js?v=ee6e64e7"></script>
 </head>
 <body>
   <a class="skip-link" href="#finder">Skip to care search</a>
@@ -111,45 +111,42 @@
             </div>
           </div>
           <div class="options-footer">
-            <div class="advanced-settings">
-              <label class="toggle-label"><input class="toggle" id="advanced-options" type="checkbox" role="switch" aria-controls="priority-controls"><span class="toggle-track" aria-hidden="true"></span>Advanced options</label>
-              <section id="priority-controls" aria-labelledby="priority-title" hidden>
-                <h3 id="priority-title">My priorities</h3>
-                <p class="caption">Choose the criteria that matter to you and put them in order. Select Ranked criteria under Sort by to apply them.</p>
+            <details class="expander advanced-settings" id="fit-settings">
+              <summary>Advanced options</summary>
+              <div class="range-field result-limit">
+                <label for="limit">Results to show</label><output id="limit-value" for="limit">5</output>
+                <input type="range" id="limit" min="1" max="10" step="1" value="5">
+              </div>
+              <fieldset class="fit-weights" aria-describedby="fit-weights-note">
+                <legend>Fit-score weights</legend>
+                <p class="caption" id="fit-weights-note"><strong>Why these defaults?</strong> We give equipment and staff the most weight (40%) because they’re matched to the service you chose. Round-the-clock opening (25%) comes next because it affects when you can visit. Accreditation and ratings (20%) describe the facility overall, and record freshness (15%) tells you how recently its details were checked. Set a slider to 0 to leave that factor out.</p>
+                <div class="weight-grid">
+                  <div class="range-field">
+                    <label for="weight-capability">Equipment &amp; staff match</label><output id="weight-capability-value" for="weight-capability">0.40</output>
+                    <input type="range" id="weight-capability" min="0" max="1" step="0.05" value="0.40">
+                  </div>
+                  <div class="range-field">
+                    <label for="weight-availability">Availability (24x7)</label><output id="weight-availability-value" for="weight-availability">0.25</output>
+                    <input type="range" id="weight-availability" min="0" max="1" step="0.05" value="0.25">
+                  </div>
+                  <div class="range-field">
+                    <label for="weight-quality">Accreditation &amp; rating</label><output id="weight-quality-value" for="weight-quality">0.20</output>
+                    <input type="range" id="weight-quality" min="0" max="1" step="0.05" value="0.20">
+                  </div>
+                  <div class="range-field">
+                    <label for="weight-confidence">Data freshness</label><output id="weight-confidence-value" for="weight-confidence">0.15</output>
+                    <input type="range" id="weight-confidence" min="0" max="1" step="0.05" value="0.15">
+                  </div>
+                </div>
+              </fieldset>
+              <p id="fit-weight-status" class="caption" role="status" hidden></p>
+              <details class="expander" id="priority-controls">
+                <summary>Custom result order</summary>
+                <p class="caption">Give your most important criterion rank 1. Facility fit uses the sliders above. Choose Ranked criteria under Sort by to apply your order.</p>
                 <div id="priority-list"></div>
                 <p class="caption" id="priority-summary" role="status"></p>
-              </section>
-              <details class="expander" id="fit-settings">
-                <summary>Results and fit settings</summary>
-                <div class="range-field result-limit">
-                  <label for="limit">Results to show</label><output id="limit-value" for="limit">5</output>
-                  <input type="range" id="limit" min="1" max="10" step="1" value="5">
-                </div>
-                <fieldset class="fit-weights" aria-describedby="fit-weights-note">
-                  <legend>Fit-score weights</legend>
-                  <p class="caption" id="fit-weights-note"><strong>Why these defaults?</strong> We give equipment and staff the most weight (40%) because they’re matched to the service you chose. Round-the-clock opening (25%) comes next because it affects when you can visit. Accreditation and ratings (20%) describe the facility overall, and record freshness (15%) tells you how recently its details were checked.</p>
-                  <div class="weight-grid">
-                    <div class="range-field">
-                      <label for="weight-capability">Equipment &amp; staff match</label><output id="weight-capability-value" for="weight-capability">0.40</output>
-                      <input type="range" id="weight-capability" min="0" max="1" step="0.05" value="0.40">
-                    </div>
-                    <div class="range-field">
-                      <label for="weight-availability">Availability (24x7)</label><output id="weight-availability-value" for="weight-availability">0.25</output>
-                      <input type="range" id="weight-availability" min="0" max="1" step="0.05" value="0.25">
-                    </div>
-                    <div class="range-field">
-                      <label for="weight-quality">Accreditation &amp; rating</label><output id="weight-quality-value" for="weight-quality">0.20</output>
-                      <input type="range" id="weight-quality" min="0" max="1" step="0.05" value="0.20">
-                    </div>
-                    <div class="range-field">
-                      <label for="weight-confidence">Data freshness</label><output id="weight-confidence-value" for="weight-confidence">0.15</output>
-                      <input type="range" id="weight-confidence" min="0" max="1" step="0.05" value="0.15">
-                    </div>
-                  </div>
-                </fieldset>
-                <p id="fit-weight-status" class="caption" role="status" hidden></p>
               </details>
-            </div>
+            </details>
             <button class="button button-primary" id="search-button" type="submit" disabled>Find facilities<span class="action-arrow" aria-hidden="true">→</span></button>
           </div>
         </section>

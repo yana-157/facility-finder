@@ -1,4 +1,4 @@
-import { DEFAULT_FIT_WEIGHTS, TRAVEL_MODES } from "./ranking.js?v=6fd04098";
+import { DEFAULT_FIT_WEIGHTS, TRAVEL_MODES } from "./ranking.js?v=eecbb77a";
 
 const number = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 });
 const percent = new Intl.NumberFormat("en-IN", { style: "percent", maximumFractionDigits: 0 });
@@ -10,7 +10,7 @@ const evidenceLabels = {
   mention: "Mentioned in the facility record",
 };
 const criterionLabels = {
-  travel: "Journey length", distance: "Journey length", evidence: "Service evidence",
+  fit: "Facility fit", travel: "Journey length", distance: "Journey length", evidence: "Service evidence",
   capability: "Equipment and staff", availability: "Round-the-clock operation",
   quality: "Accreditation and rating", freshness: "Record freshness", spare: "Spare capacity",
 };

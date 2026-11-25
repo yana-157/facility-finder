@@ -96,6 +96,27 @@ test("ordered priorities use the selected mode's journey time and disclose missi
   assert.equal(unknown.priorityParts[0].value, null);
 });
 
+test("the facility fit priority uses the slider weights and branch service match", () => {
+  const data = fixture();
+  data.facilities[0].open24h = false;
+  data.facilities[1].open24h = true;
+  Object.assign(data.matches.Dialysis[1], {kind: "mention", confidence: 25, match: 40, capability: 0.2});
+  delete data.matches.Dialysis[2].capability;
+  const options = {sort: "priorities", priorities: ["fit"]};
+  assert.deepEqual(search(data, options).results.map(row => row.assessment.index), [0, 1, 2]);
+
+  const fitWeights = {capability: 0.1, availability: 0.9, quality: 0, freshness: 0};
+  const results = search(data, {...options, fitWeights}).results;
+  assert.deepEqual(results.map(row => row.assessment.index), [1, 0, 2]);
+  assert.deepEqual(results.map(row => row.fitScore), [36.8, 10, null]);
+  for (const row of results) {
+    assert.equal(row.priorityScore, row.fitScore);
+    assert.deepEqual(row.priorityParts, [
+      {criterion: "fit", value: row.fitScore === null ? null : row.fitScore / 100, weight: 1},
+    ]);
+  }
+});
+
 test("driving minutes reverse the distance order and exclude omitted branches for every sort", () => {
   const data = fixture();
   const routeMatrix = matrix(data, [{index: 0, seconds: 1800}, {index: 1, seconds: 600}]);
