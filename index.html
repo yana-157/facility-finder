@@ -58,7 +58,6 @@
         <a href="./methods.html">Data and methods</a>
       </div>
       <p class="caption">Choose a service and location to compare mapped options, fit scores, and available source evidence.</p>
-      <p class="availability-note">Beds are a rough measure of facility size. Call the facility to confirm the service, branch, and current availability before traveling.</p>
     </header>
 
     <form id="finder-form" novalidate>
@@ -120,13 +119,6 @@
               </select>
             </div>
           </div>
-          <div class="option-pair">
-            <div>
-              <label class="toggle-label"><input class="toggle" id="projected-load" name="projected-load" type="checkbox" role="switch" autocomplete="off" aria-describedby="load-help"><span class="toggle-track" aria-hidden="true"></span>Consider projected load</label>
-              <p id="load-help" class="caption">Compare published monthly caseload and throughput for nearby routine-care options.</p>
-            </div>
-            <label class="toggle-label"><input class="toggle" id="use-traveltime" type="checkbox" role="switch" checked aria-describedby="route-privacy"><span class="toggle-track" aria-hidden="true"></span>Use TravelTime estimates</label>
-          </div>
           <label class="toggle-label"><input class="toggle" id="advanced-options" type="checkbox" role="switch" aria-controls="priority-controls"><span class="toggle-track" aria-hidden="true"></span>Advanced options</label>
           <section id="priority-controls" aria-labelledby="priority-title" hidden>
             <h3 id="priority-title">My priorities</h3>
@@ -134,15 +126,23 @@
             <div id="priority-list"></div>
             <p class="caption" id="priority-summary" role="status"></p>
           </section>
-          <div class="equity-control">
-            <label class="toggle-label"><input class="toggle" id="consider-equity" type="checkbox" role="switch" aria-describedby="equity-help"><span class="toggle-track" aria-hidden="true"></span>Consider equity score</label>
-            <details class="equity-explanation"><summary>What’s that?</summary><p>Comparable patient-reported respect and clinical outcomes can help distinguish similar facilities for routine care.</p></details>
+          <div class="option-pair">
+            <div>
+              <label class="toggle-label"><input class="toggle" id="projected-load" name="projected-load" type="checkbox" role="switch" autocomplete="off" aria-describedby="load-help"><span class="toggle-track" aria-hidden="true"></span>Ease pressure on busy facilities</label>
+              <p id="load-help" class="caption">Compare nearby facilities using their expected monthly workload.</p>
+            </div>
+            <div>
+              <div class="equity-control">
+                <label class="toggle-label"><input class="toggle" id="consider-equity" type="checkbox" role="switch" aria-describedby="equity-help"><span class="toggle-track" aria-hidden="true"></span>Consider equity score</label>
+                <details class="equity-explanation"><summary>What’s that?</summary><p>Comparable patient-reported respect and clinical outcomes can help distinguish similar facilities for routine care.</p></details>
+              </div>
+              <p id="equity-help" class="caption"></p>
+            </div>
           </div>
-          <p id="equity-help" class="caption"></p>
         </section>
         <p class="field-error" id="search-error" role="alert" hidden></p>
         <button class="button button-primary" id="search-button" type="submit" aria-describedby="route-privacy">Find facilities</button>
-        <p class="caption" id="route-privacy">With TravelTime on, your service, travel mode and starting coordinates go to our routing server. TravelTime receives the travel mode and the coordinates of the origin and candidate facilities.</p>
+        <p class="caption" id="route-privacy">A search sends your service, travel mode and starting coordinates to our routing server. TravelTime receives the travel mode and the coordinates of the origin and candidate facilities.</p>
       </fieldset>
     </form>
 
@@ -190,9 +190,9 @@
     <details id="methods" class="expander methods">
       <summary>How this prototype decides</summary>
       <ul>
-        <li>Recommended combines travel time with service match and confidence in the evidence for the exact branch. TravelTime estimates trips of up to three hours on a typical weekday morning in your chosen mode. If routing is unavailable, results label the straight-line distance.</li>
+        <li>Each search requests TravelTime estimates for trips of up to three hours on a typical weekday morning in your chosen mode. Recommended combines travel time with service match and confidence in the evidence for the exact branch. If routing is unavailable, results label the straight-line distance.</li>
         <li>Fit scores use the service match and facility records under your chosen weights. Ranked criteria applies your personal priorities in the order you set.</li>
-        <li>Consider projected load compares routine options with comparable service evidence, monthly caseload and modeled throughput. Equity comparisons require paired evidence for the same branch and service.</li>
+        <li>Ease pressure on busy facilities compares expected monthly demand and capacity at nearby facilities that offer similar routine care. Equity comparisons require paired evidence for the same branch and service.</li>
       </ul>
       <p><a href="./methods.html">Read the full data and methods report</a></p>
       <div class="methods-links">

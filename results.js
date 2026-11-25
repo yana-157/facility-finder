@@ -224,7 +224,7 @@ function scoreBreakdown(result, options) {
     const units = Number.isFinite(result.travelMinutes) ? "min equivalent" : "km equivalent";
     const items = [["Travel", scoreParts.travel], ["Service match penalty", scoreParts.matchPenalty], ["Service confidence penalty", scoreParts.confidencePenalty], ["Total", result.recommendedScore]];
     panel.append(table(["Recommended score component", units], items.map(([label, value]) => [label, number.format(value)]), "score-table", "Recommended score breakdown"));
-    panel.append(node("p", "A lower total ranks first before any projected-load comparison."));
+    panel.append(node("p", "A lower total ranks first before comparing expected workloads."));
   }
   if (priorityParts?.length) {
     panel.append(table(["Personal priority", "Value", "Weight"], priorityParts.map(({criterion, value, weight}) =>
@@ -236,7 +236,7 @@ function scoreBreakdown(result, options) {
 function projectionDetails(result, options) {
   const load = result.projectedLoad;
   if (!load) return null;
-  const panel = details("Projected load comparison");
+  const panel = details("Expected workload comparison");
   panel.append(facts([
     [load.caseloadPredicted ? "Projected demand" : "Historical demand", `${number.format(load.caseload)} ${load.unit}/month`],
     [load.capacityPredicted ? "Modeled throughput" : "Reported throughput", `${number.format(load.capacity)} ${load.unit}/month`],

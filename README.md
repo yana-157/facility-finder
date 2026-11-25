@@ -4,7 +4,7 @@ The [Data and methods report](https://yana-157.github.io/facility-finder/methods
 
 The public site searches 9,076 facilities from the project's published release. The release is dated November 22, 2026 at 06:32 UTC. The team assessed service evidence for 18 services as of November 22. Both dates are recorded in `data.json`. Result cards distinguish reported bed counts from model estimates.
 
-Search for a care service by Indian PIN, city, district, or coordinates. Choose driving, walking, cycling, or public transport. Recommended combines the estimated weekday-morning journey time for that mode with service match and branch-specific evidence. Fastest ranks by journey time. A successful search includes branches reachable within three hours. Public transport coverage varies by location. When routing fails, the page labels its straight-line fallback. The routine-care load option compares published demand and modeled throughput when the first recommendation has a comparable nearby alternative.
+Search for a care service by Indian PIN, city, district, or coordinates. Choose driving, walking, cycling, or public transport. The app automatically requests TravelTime estimates for your choice. Recommended combines the estimated weekday-morning journey time for that mode with service match and branch-specific evidence. Fastest ranks by journey time. A successful search includes branches reachable within three hours. Public transport coverage varies by location. When routing fails, the page labels its straight-line fallback. For routine care, turn on **Ease pressure on busy facilities** to compare published demand and modeled throughput at comparable nearby branches. The comparison applies to Recommended sorting.
 
 The browser resolves the origin and sends its coordinates, selected service, travel mode, and snapshot checksum to the public Facility Finder routing endpoint on Cloudflare Workers. The Worker keeps the TravelTime credentials server-side and returns journey times for reachable branches. Visitors can search without an account. Route calculation time and the facility evidence date are displayed separately. [Published data and prototype](https://github.com/augustchu/datathon-F26/tree/restore-care-finder-map)
 
@@ -16,6 +16,28 @@ Run `python3 -m http.server 8000` in this directory to preview. Run `node --test
 python3 build_data.py /path/to/datathon-F26
 python3 build_classic_data.py /path/to/datathon-F26
 ```
+
+## Replay the dialysis comparison offline
+
+From this checkout, run the following with Node 24 or later to compare the same two facilities with and without the workload adjustment. The experiment uses straight-line kilometres from the fixed origin and runs entirely on the November 22 data.
+
+```sh
+node --input-type=module <<'JS'
+import {readFile} from 'node:fs/promises';
+import {rankFacilities} from './ranking.js';
+
+const snapshot = JSON.parse(await readFile('data.json', 'utf8'));
+const query = {service: 'Dialysis', origin: {lat: 31.833, lon: 77.018}, severity: 'routine', limit: 2};
+for (const considerLoad of [false, true]) {
+  const {results} = rankFacilities(snapshot, {...query, considerLoad});
+  console.table(results.map(({facility, distanceKm}, index) => ({
+    considerLoad, rank: index + 1, branch: facility.name, km: distanceKm.toFixed(2),
+  })));
+}
+JS
+```
+
+Mandi ranks first at 16.02 km in the baseline. Kullu ranks first at 16.34 km when the comparison includes the branches’ projected dialysis workload.
 
 ## Use Databricks as the data source
 

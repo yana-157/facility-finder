@@ -6,7 +6,6 @@ const get = id => document.getElementById(id);
 const form = get("finder-form");
 const service = get("service");
 const travelMode = get("travel-mode");
-const useTravelTime = get("use-traveltime");
 const advanced = get("advanced-options");
 const equity = get("consider-equity");
 const group = get("service-group");
@@ -149,9 +148,9 @@ function updateLoadControl() {
   const eligible = routine && sort.value === "recommended";
   considerLoad.disabled = !eligible;
   if (!eligible) considerLoad.checked = false;
-  let help = "Turn on to compare monthly caseload and throughput at nearby facilities for routine care.";
-  if (serviceInfo && !routine) help = "Load balancing is available for routine, non-time-critical care.";
-  else if (sort.value !== "recommended") help = "Choose Recommended sorting to use load balancing.";
+  let help = "Compare nearby facilities using their expected monthly workload.";
+  if (serviceInfo && !routine) help = "Workload comparisons are available for routine, non-time-critical care.";
+  else if (sort.value !== "recommended") help = "Choose Recommended sorting to compare expected workloads.";
   get("load-help").textContent = help;
   equity.disabled = !routine;
   if (!routine) equity.checked = false;
@@ -209,17 +208,15 @@ function renderSearch(routeMatrix) {
     routeStatus.replaceChildren(externalLink("TravelTime", "https://traveltime.com/"),
       ` weekday-morning ${mode.label.toLowerCase()} estimates · calculated ${formatPublication.format(routeMatrix.calculatedAt)} UTC.`);
   } else {
-    status(routeStatus, useTravelTime.checked
-      ? `${mode.label} estimates are unavailable. These results use straight-line distance.`
-      : "TravelTime estimates are off. Distances are measured in a straight line.");
+    status(routeStatus, `${mode.label} estimates are unavailable. These results use straight-line distance.`);
   }
   controls.hidden = !count;
-  drivingAlternatives.hidden = !useTravelTime.checked || travelMode.value === "driving" || Boolean(routeMatrix && count);
+  drivingAlternatives.hidden = travelMode.value === "driving" || Boolean(routeMatrix && count);
   const loadText = {
-    sort: "Choose Recommended sorting to compare projected load.",
-    unavailable: "The first recommendation has no comparable nearby alternative with usable projected load. Showing the baseline order.",
-    compared: `Compared projected monthly load for ${result.comparisonCount} nearby facilities. The first recommendation stayed the same.`,
-    changed: `Compared projected monthly load for ${result.comparisonCount} nearby facilities. ${activeResults[0]?.facility.name} moved to first.`,
+    sort: "Choose Recommended sorting to compare expected workloads.",
+    unavailable: "There are too few comparable workload estimates to change the recommendation.",
+    compared: `Compared expected workloads at ${result.comparisonCount} nearby facilities. The first recommendation stayed the same.`,
+    changed: `Compared expected workloads at ${result.comparisonCount} nearby facilities. ${activeResults[0]?.facility.name} moved to first.`,
   };
   status(loadStatus, count ? loadText[result.loadStatus] ?? "" : "");
   status(get("equity-status"), equity.checked && count
@@ -309,7 +306,7 @@ async function search({ focus = true } = {}) {
   if (focus) scrollTo(get("results-title"));
   let matrix;
   try {
-    matrix = useTravelTime.checked ? await fetchRoutes(origin, service.value, selectedMode) : null;
+    matrix = await fetchRoutes(origin, service.value, selectedMode);
   } catch {
     matrix = null;
   }
@@ -417,10 +414,6 @@ service.addEventListener("change", selectService);
 for (const radio of document.querySelectorAll('[name="browse-by"]')) radio.addEventListener("change", updateGroups);
 group.addEventListener("change", updateServices);
 travelMode.addEventListener("change", () => { if (origin) search({focus: false}); });
-useTravelTime.addEventListener("change", () => {
-  travelMode.disabled = !useTravelTime.checked;
-  if (origin) search({focus: false});
-});
 drivingAlternatives.addEventListener("click", () => {
   travelMode.value = "driving";
   search();

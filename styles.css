@@ -59,7 +59,6 @@ body:has(#sidebar-toggle[aria-expanded="false"]) .page { margin-left: 0; }
 .title-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .25rem .85rem; }
 .title-row a { font-size: .9rem; }
 .intro h1 { margin-bottom: .38rem; }
-.availability-note { margin-top: .8rem; padding: .8rem 1rem; background: #fff8d7; color: #654a00; border-radius: .5rem; font-size: .875rem; }
 .range-field {
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: .18rem .5rem; margin: .65rem 0;
 }
@@ -208,9 +207,12 @@ body:has(#sidebar-toggle[aria-expanded="false"]) .page { margin-left: 0; }
   .result-list { max-height: min(45rem, 70svh); }
 }
 @media (max-width: 460px) {
-  .option-pair, .options-panel > .fields-2 { grid-template-columns: minmax(0, 1fr); gap: .55rem; }
+  .options-panel > .fields-2 { grid-template-columns: minmax(0, 1fr); gap: .55rem; }
+  .option-pair { gap: .7rem; }
   .fields-2 { gap: .5rem; }
-  .availability-note { padding: .65rem .75rem; }
   .panel { padding: .8rem; }
   .card-metrics { gap: .5rem .85rem; }
+}
+@media (max-width: 360px) {
+  .option-pair { grid-template-columns: minmax(0, 1fr); }
 }
