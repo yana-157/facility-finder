@@ -1,4 +1,4 @@
-import { facilityPopup } from "./results.js?v=8104d949";
+import { facilityPopup } from "./results.js?v=bf0d8c46";
 
 const INDIA_BOUNDS = [[7.3, 68], [37.4, 97.7]];
 const LEAFLET = "https://unpkg.com/leaflet@1.9.4/dist/";
@@ -42,6 +42,7 @@ function pin(className, text) {
 
 export function facilityMap({ street, feedback, retry, onSelect }) {
   let origin;
+  let routedOrigin;
   let results = [];
   let travelMode = "driving";
   let active = null;
@@ -55,6 +56,7 @@ export function facilityMap({ street, feedback, retry, onSelect }) {
 
   function fit() {
     const points = origin ? [origin, ...results.map(result => result.facility)].map(p => [p.lat, p.lon]) : INDIA_BOUNDS;
+    if (routedOrigin) points.push([routedOrigin.lat, routedOrigin.lon]);
     map.fitBounds(points, {padding: [38, 38], maxZoom: origin ? 15 : 5, animate: false});
   }
 
@@ -76,13 +78,14 @@ export function facilityMap({ street, feedback, retry, onSelect }) {
     markers.clearLayers();
     fit(); // Set the initial view before Leaflet attaches the marker elements.
     const L = window.L;
-    if (origin) {
-      const title = "Your location: " + origin.label;
-      const marker = L.marker([origin.lat, origin.lon], {
-        title, icon: L.divIcon({className: "map-leaflet-pin", html: pin("map-origin", "⌂"), iconSize: [30, 30], iconAnchor: [15, 15]}),
+    function startMarker(point, title, className, symbol) {
+      const marker = L.marker([point.lat, point.lon], {
+        title, icon: L.divIcon({className: "map-leaflet-pin", html: pin(className, symbol), iconSize: [30, 30], iconAnchor: [15, 15]}),
       }).bindTooltip(document.createTextNode(title)).addTo(markers);
       marker.getElement().setAttribute("aria-label", title);
     }
+    if (origin) startMarker(origin, (routedOrigin ? "Entered location: " : "Your location: ") + origin.label, "map-origin", "⌂");
+    if (routedOrigin) startMarker(routedOrigin, "Routing start: " + routedOrigin.label, "map-route-start", "➜");
     pins = results.map((result, index) => {
       const {facility} = result;
       const label = `${index + 1}. ${facility.name}`;
@@ -90,7 +93,7 @@ export function facilityMap({ street, feedback, retry, onSelect }) {
       icon.dataset.rank = index;
       const marker = L.marker([facility.lat, facility.lon], {
         title: label, icon: L.divIcon({className: "map-leaflet-pin", html: icon, iconSize: [32, 36], iconAnchor: [16, 34], popupAnchor: [0, -27]}),
-      }).bindPopup(() => facilityPopup(result, index, {origin, travelMode}), {maxWidth: 320, maxHeight: Math.max(140, street.clientHeight - 105)})
+      }).bindPopup(() => facilityPopup(result, index, {origin: routedOrigin ?? origin, travelMode}), {maxWidth: 320, maxHeight: Math.max(140, street.clientHeight - 105)})
         .on("popupopen", () => {
           if (active !== index) onSelect(index);
         }).addTo(markers);
@@ -154,6 +157,7 @@ export function facilityMap({ street, feedback, retry, onSelect }) {
   return {
     show(newOrigin, newResults, options = {}) {
       origin = newOrigin;
+      routedOrigin = options.routedOrigin;
       results = newResults;
       travelMode = options.travelMode || "driving";
       active = null;

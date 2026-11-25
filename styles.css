@@ -169,8 +169,9 @@ fieldset { min-inline-size: 0; padding: 0; border: 0; }
 .map-stage .leaflet-container { font-family: inherit; }
 .map-fit { min-width: 30px; min-height: 30px; border: 0; background: white; color: var(--ink); }
 .map-fit:hover { background: #f4f4f4; }
-.map-origin, .map-marker { display: grid; place-items: center; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 4px #17243a55; color: white; font-weight: 700; }
+.map-origin, .map-route-start, .map-marker { display: grid; place-items: center; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 4px #17243a55; color: white; font-weight: 700; }
 .map-origin { width: 1.55rem; height: 1.55rem; background: #cb392e; }
+.map-route-start { width: 1.55rem; height: 1.55rem; border-radius: .22rem; background: #126245; }
 .map-marker { width: 2.1rem; height: 2.1rem; background: var(--blue); font-size: .88rem; border-radius: 52% 52% 52% 0; transform: rotate(-45deg); }
 .map-marker > span { transform: rotate(45deg); }
 .map-marker:hover, .map-marker[data-active="true"] { background: #07518d; box-shadow: 0 0 0 3px #96badd; }

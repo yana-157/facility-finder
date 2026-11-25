@@ -1,6 +1,6 @@
-import { attachClassicData, parseRouteMatrix, resolveOrigin, rankFacilities, ROUTING_URL, TRAVEL_MODES } from "./ranking.js";
-import { facilityMap } from "./map.js?v=d62ad5f9";
-import { resultCard, contactsTable } from "./results.js?v=8104d949";
+import { attachClassicData, haversineKm, parseRouteMatrix, resolveOrigin, rankFacilities, RouteOriginError, ROUTING_URL, TRAVEL_MODES } from "./ranking.js?v=6fd04098";
+import { facilityMap } from "./map.js?v=b25de678";
+import { resultCard, contactsTable } from "./results.js?v=bf0d8c46";
 
 const get = id => document.getElementById(id);
 const form = get("finder-form");
@@ -177,6 +177,9 @@ function renderSearch(routeMatrix) {
   activeResults = result.results;
   const place = origin.label + (origin.approximate ? " (approximate)" : "");
   const mode = TRAVEL_MODES[travelMode.value];
+  const routedOrigin = routeMatrix?.routedOrigin;
+  const adjusted = routedOrigin && (routedOrigin.lat !== origin.lat || routedOrigin.lon !== origin.lon);
+  const startLabel = adjusted ? `${routedOrigin.lat.toFixed(5)}, ${routedOrigin.lon.toFixed(5)}` : "";
   const count = activeResults.length;
   const noRoutes = routeMatrix?.secondsByIndex.size === 0;
   const onlyLowConfidence = !count && result.candidateCount > 0 && result.lowConfidenceCount === result.candidateCount;
@@ -214,6 +217,16 @@ function renderSearch(routeMatrix) {
     routeStatus.hidden = false;
     routeStatus.replaceChildren(externalLink("TravelTime", "https://traveltime.com/"),
       ` weekday-morning ${mode.label.toLowerCase()} estimates · calculated ${formatPublication.format(routeMatrix.calculatedAt)} UTC.`);
+    if (adjusted) {
+      const km = haversineKm(origin, routedOrigin);
+      const separation = km < 1 ? `${formatNumber.format(Math.round(km * 1000))} m` : `${formatDecimal.format(km)} km`;
+      routeStatus.append(
+        ` The routing start (${startLabel}) is ${separation} in a straight line from your entered coordinates (${origin.lat}, ${origin.lon}). Travel times exclude the journey to that starting point. Facility distances and directions also start there. `,
+        externalLink("Road lookup by FOSSGIS", "https://routing.openstreetmap.de/about.html"), " · ",
+        externalLink("© OpenStreetMap contributors", "https://www.openstreetmap.org/copyright"), " · ",
+        externalLink("Fix the map", "https://www.openstreetmap.org/fixthemap"),
+      );
+    }
   } else {
     status(routeStatus, `${mode.label} estimates are unavailable. The travel comparison uses straight-line distance.`);
   }
@@ -234,35 +247,42 @@ function renderSearch(routeMatrix) {
       : "The published snapshot has no paired evidence on patient-reported respect and clinical outcomes for these facilities. The displayed order uses your selected sort.";
   }
   status(get("equity-status"), equityStatus);
-  const cardOptions = {service: service.value, serviceInfo, travelMode: travelMode.value, sort: sort.value, origin,
+  const cardOptions = {service: service.value, serviceInfo, travelMode: travelMode.value, sort: sort.value, origin: routedOrigin ?? origin,
     fitWeights: weights, snapshotDate: data.classifiedAsOf, sourceUrl: data.sourceUrl, projectionSourceUrl: data.projectionSourceUrl,
     onShowMap: index => focusResult(index, true)};
   list.replaceChildren(...activeResults.map((item, index) => resultCard(item, index, cardOptions)));
   get("contacts").hidden = !count;
   get("contact-table").replaceChildren(...(count ? [contactsTable(activeResults, cardOptions)] : []));
   if (!count) list.append(element("p", emptyHint, "empty-card"));
-  get("map-context").textContent = place;
+  get("map-context").textContent = adjusted
+    ? `Entered coordinates ${place}. The green arrow marks the routing start at ${startLabel}.` : place;
   status(mapSelection, "");
-  map.show(origin, activeResults, {travelMode: travelMode.value});
+  map.show(origin, activeResults, {travelMode: travelMode.value, routedOrigin: adjusted ? {...routedOrigin, label: startLabel} : undefined});
 }
 
-class UnroutableOriginError extends Error {}
-
-function fetchRoutes(location, serviceName, selectedMode) {
+function fetchRoutes(location, serviceName, selectedMode, allowOriginAdjustment) {
   const {lat, lon} = location;
-  const body = JSON.stringify({origin: {lat, lon}, service: serviceName, travelMode: selectedMode, snapshotSha256});
+  const request = {origin: {lat, lon}, service: serviceName, travelMode: selectedMode, snapshotSha256};
+  if (allowOriginAdjustment) request.allowOriginAdjustment = true;
+  const body = JSON.stringify(request);
   const routeLookup = routeLookups.get(selectedMode);
   if (routeLookup?.body === body && routeLookup.expires > Date.now()) return routeLookup.promise;
   const lookup = {body, expires: Date.now() + 30 * 60 * 1000};
   lookup.promise = fetch(ROUTING_URL, {
     method: "POST", headers: {"Content-Type": "application/json"}, body,
-    credentials: "omit", referrerPolicy: "no-referrer", cache: "no-store", signal: AbortSignal.timeout(35000),
+    credentials: "omit", referrerPolicy: "no-referrer", cache: "no-store", signal: AbortSignal.timeout(allowOriginAdjustment ? 95000 : 35000),
   }).then(async response => {
-    if (response.status === 422 && (await response.json()).code === "unroutable_origin") {
-      throw new UnroutableOriginError();
+    if (!response.ok) {
+      const problem = await response.json().catch(() => null);
+      if (response.status === 422 && problem?.code === "unroutable_origin") {
+        throw new RouteOriginError(`TravelTime couldn’t start a ${TRAVEL_MODES[selectedMode].trip} from this location. Enter coordinates on a nearby road, or search by city or PIN code.`);
+      }
+      if ([429, 502].includes(response.status) && problem?.code === "origin_adjustment_unavailable") {
+        throw new RouteOriginError("TravelTime couldn’t check an alternative starting point right now. Try the search again shortly, or enter another location.");
+      }
+      throw new Error("Routing unavailable.");
     }
-    if (!response.ok) throw new Error("Routing unavailable.");
-    return parseRouteMatrix(await response.json(), data.matches[serviceName], selectedMode);
+    return parseRouteMatrix(await response.json(), data.matches[serviceName], selectedMode, allowOriginAdjustment);
   }).catch(error => {
     if (routeLookups.get(selectedMode) === lookup) routeLookups.delete(selectedMode);
     throw error;
@@ -325,12 +345,12 @@ async function search({ focus = true } = {}) {
   if (focus) scrollTo(get("results-title"));
   let matrix;
   try {
-    matrix = await fetchRoutes(origin, service.value, selectedMode);
+    matrix = await fetchRoutes(origin, service.value, selectedMode, locationType.value === "coordinates");
   } catch (cause) {
     if (version !== searchVersion) return;
-    if (cause instanceof UnroutableOriginError) {
+    if (cause instanceof RouteOriginError) {
       context.textContent = `${service.value} near ${origin.label}`;
-      status(routeStatus, `TravelTime couldn’t start a ${TRAVEL_MODES[selectedMode].trip} from this location. Enter coordinates on a nearby road, or search by city or PIN code.`);
+      status(routeStatus, cause.message);
       return;
     }
     matrix = null;

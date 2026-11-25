@@ -1,4 +1,4 @@
-import { DEFAULT_FIT_WEIGHTS, TRAVEL_MODES } from "./ranking.js";
+import { DEFAULT_FIT_WEIGHTS, TRAVEL_MODES } from "./ranking.js?v=6fd04098";
 
 const number = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 });
 const percent = new Intl.NumberFormat("en-IN", { style: "percent", maximumFractionDigits: 0 });

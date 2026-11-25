@@ -123,6 +123,25 @@ test("routing preserves zero-second trips and rejects malformed or mismatched ro
   assert.throws(() => parseRouteMatrix({routes: []}, data.matches.Dialysis), /Invalid routing response/);
 });
 
+test("adjusted starts require permission and valid coordinates and apply to facility distances", () => {
+  const data = fixture();
+  const payload = {routes: [{index: 0, seconds: 600}, {index: 1, seconds: 120}], travelMode: "driving",
+    calculatedAt: "2026-11-24T12:00:00Z", routedOrigin: {lat: origin.lat, lon: 73.855, label: "unused"}};
+  const parse = (value, allow) => parseRouteMatrix(value, data.matches.Dialysis, "driving", allow);
+  assert.throws(() => parse(payload, false), /starting point/);
+  for (const invalid of [null, {}, {lat: "18", lon: 73}, {lat: NaN, lon: 73}, {lat: 18, lon: 181}, {lat: 72, lon: 18}]) {
+    assert.throws(() => parse({...payload, routedOrigin: invalid}, true), /starting point/);
+  }
+  const routeMatrix = parse(payload, true);
+  assert.deepEqual(routeMatrix.routedOrigin, {lat: origin.lat, lon: 73.855});
+  assert.deepEqual(parse({...payload, routes: []}, true).routedOrigin, routeMatrix.routedOrigin);
+  const {results} = search(data, {sort: "straightLine", routeMatrix});
+  assert.equal(results[0].facility.name, "Nearby");
+  assert.equal(results[0].distanceKm, 0);
+  assert.equal(results[0].travelMinutes, 2);
+  assert.equal(results[1].distanceKm, haversineKm(routeMatrix.routedOrigin, data.facilities[0]));
+});
+
 test("each transport mode ranks by its own estimates and preserves an empty result", () => {
   const data = fixture();
   for (const [mode, fastestIndex] of [["driving", 0], ["walking", 2], ["cycling", 1], ["public_transport", 2]]) {

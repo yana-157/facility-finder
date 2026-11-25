@@ -70,7 +70,9 @@ export function attachClassicData(data, companion, snapshotSha256) {
   return data;
 }
 
-export function parseRouteMatrix(payload, assessments, travelMode = "driving") {
+export class RouteOriginError extends Error {}
+
+export function parseRouteMatrix(payload, assessments, travelMode = "driving", allowOriginAdjustment = false) {
   const calculatedAt = new Date(payload?.calculatedAt);
   if (!Array.isArray(payload?.routes) || typeof payload.calculatedAt !== "string"
       || !Number.isFinite(calculatedAt.getTime()) || !Object.hasOwn(TRAVEL_MODES, travelMode)
@@ -86,7 +88,15 @@ export function parseRouteMatrix(payload, assessments, travelMode = "driving") {
     }
     secondsByIndex.set(index, seconds);
   }
-  return {secondsByIndex, calculatedAt, travelMode};
+  const matrix = {secondsByIndex, calculatedAt, travelMode};
+  if (Object.hasOwn(payload, "routedOrigin")) {
+    const point = payload.routedOrigin;
+    if (allowOriginAdjustment !== true || !inIndia(point?.lat, point?.lon)) {
+      throw new RouteOriginError("The routing service returned a starting point that could not be verified. Try the search again.");
+    }
+    matrix.routedOrigin = {lat: point.lat, lon: point.lon};
+  }
+  return matrix;
 }
 
 function cleanText(value) {
@@ -383,7 +393,7 @@ export function rankFacilities(data, {
       unknownFitCount++;
       if (!explicitSort) continue;
     }
-    const distanceKm = haversineKm(origin, facility);
+    const distanceKm = haversineKm(routeMatrix?.routedOrigin ?? origin, facility);
     const travelMinutes = routeMatrix ? routeMatrix.secondsByIndex.get(assessment.index) / 60 : null;
     const travel = travelMinutes ?? distanceKm;
     const confidenceCost = confidencePenalty(assessment.confidence) * penaltyScale;
