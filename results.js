@@ -302,7 +302,7 @@ export function resultCard(result, index, options) {
   facilityDetails.append(facts([["Address", addressOf(facility)], ["Hours", hoursOf(facility)]], "card-facts"));
   const website = link("Facility website", facility.website);
   if (website) facilityDetails.append(website);
-  facilityDetails.append(node("p", "Call the branch to confirm the service, hours and current availability before travelling.", "card-note"), ...reasons(result, options));
+  facilityDetails.append(...reasons(result, options));
   card.append(actions, facilityDetails, sourceEvidence(result, options), scoreBreakdown(result, options));
   return card;
 }

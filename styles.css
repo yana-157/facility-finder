@@ -6,9 +6,7 @@
   --subtle: #f4f6f7;
   --border: #cdd4da;
   --control-edge: #87949f;
-  --display: "STIX Two Text", Georgia, serif;
   --blue: #175d92;
-  font-family: "Source Sans 3", "Source Sans Pro", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 16px;
   line-height: 1.45;
   color: var(--ink);
@@ -24,7 +22,7 @@ a, .button-text { color: var(--blue); text-underline-offset: .15em; }
 a:hover, .button-text:hover { color: #004b96; }
 :focus-visible { outline: 3px solid #0068c9; outline-offset: 3px; }
 h1, h2, h3, h4, p, fieldset, dl { margin: 0; }
-h1 { font: 500 clamp(2.65rem, 4vw, 3.6rem)/1.08 var(--display); letter-spacing: -.045em; }
+h1 { font-size: clamp(2.45rem, 4vw, 3.25rem); font-weight: 700; line-height: 1.12; letter-spacing: -.025em; }
 h2 { font-size: 1.32rem; line-height: 1.2; letter-spacing: -.025em; }
 h3 { font-size: 1.25rem; line-height: 1.25; }
 h4 { font-size: 1rem; line-height: 1.35; }
@@ -80,12 +78,11 @@ fieldset { min-inline-size: 0; padding: 0; border: 0; }
 .option-pair { align-items: start; }
 .option-pair .caption { margin-top: .18rem; }
 .toggle-label { position: relative; display: flex; gap: .58rem; align-items: center; min-height: 1.7rem; width: fit-content; max-width: 100%; cursor: pointer; font-size: .9rem; }
-.toggle { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 2rem; height: 1.1rem; opacity: 0; margin: 0; }
-.toggle-track { position: relative; flex: 0 0 2rem; width: 2rem; height: 1.1rem; border-radius: 1rem; background: #777b87; pointer-events: none; }
-.toggle-track::after { position: absolute; content: ""; left: .15rem; top: .15rem; width: .8rem; height: .8rem; background: white; border-radius: 50%; }
-.toggle:checked + .toggle-track { background: var(--blue); }
-.toggle:checked + .toggle-track::after { transform: translateX(.9rem); }
-.toggle:disabled + .toggle-track { background: #adb0b8; }
+.toggle { position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 2rem; height: 1.1rem; opacity: 0; margin: 0; cursor: inherit; }
+.toggle-track { display: inline-flex; align-items: center; flex: 0 0 2rem; height: 1.1rem; padding-inline: .13rem; border: 2px solid var(--blue); border-radius: 1rem; color: var(--blue); background: white; pointer-events: none; }
+.toggle-track::after { content: ""; width: .65rem; height: .65rem; border-radius: 50%; background: currentColor; }
+.toggle:checked + .toggle-track { justify-content: flex-end; color: white; background: var(--blue); }
+.toggle:disabled + .toggle-track { color: #777b87; border-color: #adb0b8; background: var(--subtle); }
 .toggle:focus-visible + .toggle-track { outline: 3px solid #0068c9; outline-offset: 3px; }
 .toggle-label:has(:disabled) { color: var(--muted); cursor: default; }
 #priority-controls { display: grid; gap: .5rem; }
@@ -101,14 +98,12 @@ fieldset { min-inline-size: 0; padding: 0; border: 0; }
 .equity-explanation summary { width: fit-content; padding: .2rem 0; color: var(--blue); }
 .equity-explanation[open] p { margin: .4rem 0 0; max-width: 40ch; color: var(--muted); }
 .button, .map-tools button { display: inline-flex; align-items: center; justify-content: center; min-height: 2.4rem; border: 1px solid var(--border); border-radius: .2rem; padding: .45rem .85rem; background: white; font-weight: 500; }
-.search-action { display: flex; align-items: center; gap: .65rem 1.25rem; }
 .button-primary { flex: none; justify-self: start; min-height: 2.7rem; padding-inline: 1.15rem; color: #fff; background: var(--ink); border-color: var(--ink); }
 .button-primary:hover:not(:disabled) { background: var(--blue); border-color: var(--blue); }
 .button-primary:disabled { background: #526272; border-color: #526272; }
 .button-subtle { font-size: .85rem; }
 .button-subtle:hover:not(:disabled), .map-tools button:hover { border-color: var(--blue); color: var(--blue); }
 .button-text { border: 0; padding: 0; background: transparent; font-size: .88rem; text-decoration: underline; }
-#route-privacy { max-width: 78ch; font-size: .79rem; }
 #driving-alternatives { margin-bottom: .55rem; }
 
 .finder-output { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; gap: clamp(1.25rem, 3vw, 3rem); border-top: 2px solid var(--ink); padding-top: 1.1rem; margin: 1.5rem 0 1rem; }
@@ -121,6 +116,8 @@ fieldset { min-inline-size: 0; padding: 0; border: 0; }
 .results-controls label { font-size: .77rem; }
 .results-controls select { min-height: 2.1rem; }
 .load-status, .map-selection { margin: .4rem 0; font-size: .875rem; }
+.verification-note { margin: .85rem 0 .3rem; border-inline-start: 3px solid #95691d; padding-inline-start: .65rem; font-size: .93rem; }
+.results-panel:not(:has(.result-card)) .verification-note { display: none; }
 .map-selection strong { color: var(--blue); }
 .result-list { display: grid; min-width: 0; }
 .result-card { min-width: 0; border-top: 1px solid var(--border); padding: 1rem 0; overflow-wrap: anywhere; scroll-margin-top: 1rem; }
@@ -160,6 +157,7 @@ fieldset { min-inline-size: 0; padding: 0; border: 0; }
   .finder-output[data-searched="true"] .map-panel:not(:has(#contacts[open])) { position: sticky; top: 1rem; }
 }
 .local-map, .local-map canvas, .local-markers, .street-map { position: absolute; inset: 0; width: 100%; height: 100%; }
+.map-stage .leaflet-container { font-family: inherit; }
 .local-markers { pointer-events: none; }
 .local-origin, .map-marker { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; border-radius: 50%; border: 2px solid white; box-shadow: 0 1px 4px #17243a55; }
 .local-origin { width: 1.55rem; height: 1.55rem; background: #cb392e; color: white; font-weight: bold; }
@@ -197,7 +195,6 @@ fieldset { min-inline-size: 0; padding: 0; border: 0; }
 @media (max-width: 46rem) {
   .search-columns { grid-template-columns: minmax(0, 1fr); }
   .search-section + .search-section { margin-top: .2rem; }
-  .search-action { flex-direction: column; align-items: flex-start; }
   .finder-output[data-searched="true"] .map-stage { height: clamp(17rem, 55svh, 30rem); }
 }
 @media (max-width: 34rem) {

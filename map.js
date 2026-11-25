@@ -1,4 +1,4 @@
-import { facilityPopup } from "./results.js";
+import { facilityPopup } from "./results.js?v=31500d2a";
 
 const INDIA_CORNERS = [{ lat: 7.3, lon: 68 }, { lat: 37.4, lon: 97.7 }];
 const INDIA_CENTER = [22.7, 81.2];
@@ -67,7 +67,7 @@ function canvasMap(canvas, project, width, height, boundaries, origin) {
   if (!origin && boundaries.length) {
     const { x, y } = project(...INDIA_CENTER);
     ctx.textAlign = "center";
-    ctx.font = "700 13px system-ui";
+    ctx.font = "700 13px Roboto, Arial, sans-serif";
     ctx.strokeStyle = "#edf1d9";
     ctx.lineWidth = 4;
     ctx.strokeText("I N D I A", x, y);
@@ -83,7 +83,7 @@ function coordinateGrid(ctx, area, width, height) {
   const digits = step < 1 ? Math.max(0, Math.ceil(-Math.log10(step))) + (String(step).endsWith("25") ? 1 : 0) : 1;
   const label = value => Number(value.toFixed(digits)) + "°";
   ctx.save();
-  ctx.font = "10px system-ui";
+  ctx.font = "10px Roboto, Arial, sans-serif";
   ctx.textAlign = "left";
   ctx.lineWidth = 0.6;
   ctx.strokeStyle = "#b3c0bd";
@@ -129,7 +129,7 @@ function drawPlaces(ctx, places, area, width, height, foreground) {
     const {x, y} = project(lat, lon);
     const name = /^[A-Z ]{5,}$/.test(sourceName)
       ? sourceName.toLowerCase().replace(/(^|\s)\p{L}/gu, ch => ch.toUpperCase()) : sourceName;
-    ctx.font = tier === 0 ? "600 13px system-ui" : "12px system-ui";
+    ctx.font = tier === 0 ? "600 13px Roboto, Arial, sans-serif" : "12px Roboto, Arial, sans-serif";
     const w = ctx.measureText(name).width;
     const h = 15;
     const positions = [[x + 5, y - 6], [x - w - 6, y - 6], [x - w / 2, y - h - 4], [x - w / 2, y + 4]];
@@ -310,7 +310,7 @@ export function facilityMap({ stage, canvas, markerLayer, local, street, button,
       const km = (maxKm >= 5 * unit ? 5 : maxKm >= 2 * unit ? 2 : 1) * unit;
       const px = km / kmPerPixel;
       const x = width - 12 - px, y = height - 12;
-      ctx.font = "11px system-ui";
+      ctx.font = "11px Roboto, Arial, sans-serif";
       ctx.textAlign = "right";
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = "#425b63";
@@ -468,6 +468,7 @@ export function facilityMap({ stage, canvas, markerLayer, local, street, button,
     .then(data => { places = data?.places ?? []; redraw(); })
     .catch(() => { /* Coordinate grid and district outlines still give local context. */ });
 
+  document.fonts.ready.then(redraw);
   new ResizeObserver(() => {
     if (streetOn) streetMap.invalidateSize();
     else redraw();

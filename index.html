@@ -6,8 +6,9 @@
   <meta name="description" content="Compare health facilities in India by travel time, facility fit and published evidence for the service you need.">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>Facility Finder</title>
-  <link rel="stylesheet" href="./styles.css">
-  <script type="module" src="./app.js"></script>
+  <link rel="stylesheet" href="./fonts/roboto.css">
+  <link rel="stylesheet" href="./styles.css?v=f5eaf163">
+  <script type="module" src="./app.js?v=50927b2b"></script>
 </head>
 <body>
   <a class="skip-link" href="#finder">Skip to care search</a>
@@ -133,22 +134,19 @@
                   <label class="toggle-label"><input class="toggle" id="projected-load" name="projected-load" type="checkbox" role="switch" autocomplete="off" aria-describedby="load-help"><span class="toggle-track" aria-hidden="true"></span>Ease pressure on busy facilities</label>
                   <p id="load-help" class="caption">Compare expected monthly workload at nearby facilities in the same fit range.</p>
                 </div>
-                <div>
-                  <div class="equity-control">
-                    <label class="toggle-label"><input class="toggle" id="consider-equity" type="checkbox" role="switch" aria-describedby="equity-help"><span class="toggle-track" aria-hidden="true"></span>Consider equity score</label>
-                    <details class="equity-explanation"><summary>What’s that?</summary><p>Comparable patient-reported respect and clinical outcomes can help distinguish similar facilities for routine care.</p></details>
-                  </div>
-                  <p id="equity-help" class="caption"></p>
+                <div class="equity-control">
+                  <label class="toggle-label"><input class="toggle" id="consider-equity" type="checkbox" role="switch" aria-details="equity-explanation"><span class="toggle-track" aria-hidden="true"></span>Consider equity score</label>
+                  <details class="equity-explanation" id="equity-explanation">
+                    <summary>What's that?</summary>
+                    <p id="equity-help">Women and people from marginalized groups can receive worse care. The equity score combines patient-reported respect and clinical outcomes to help choose between similar hospitals.</p>
+                  </details>
                 </div>
               </div>
             </div>
           </div>
         </section>
         <p class="field-error" id="search-error" role="alert" hidden></p>
-        <div class="search-action">
-          <button class="button button-primary" id="search-button" type="submit" aria-describedby="route-privacy" disabled>Find facilities</button>
-          <p class="caption" id="route-privacy">A search sends your service, travel mode and starting coordinates to our routing server. TravelTime receives the travel mode and the coordinates of the origin and candidate facilities.</p>
-        </div>
+        <button class="button button-primary" id="search-button" type="submit" disabled>Find facilities</button>
       </div>
     </form>
 
@@ -175,6 +173,7 @@
         <button id="driving-alternatives" class="button-text" type="button" hidden>Check driving alternatives</button>
         <p id="load-status" class="load-status" role="status" hidden></p>
         <p id="equity-status" class="load-status" role="status" hidden></p>
+        <p id="verify-care" class="verification-note"><strong>Call before you travel.</strong> Ask the facility to confirm the service you need, its hours, and current availability.</p>
         <div id="result-list" class="result-list"></div>
       </section>
       <section class="map-panel" aria-labelledby="map-title">

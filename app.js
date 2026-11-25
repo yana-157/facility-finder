@@ -1,6 +1,6 @@
 import { attachClassicData, parseRouteMatrix, resolveOrigin, rankFacilities, ROUTING_URL, TRAVEL_MODES } from "./ranking.js";
-import { facilityMap } from "./map.js";
-import { resultCard, contactsTable } from "./results.js";
+import { facilityMap } from "./map.js?v=b9c57a7a";
+import { resultCard, contactsTable } from "./results.js?v=31500d2a";
 
 const get = id => document.getElementById(id);
 const form = get("finder-form");
@@ -151,9 +151,6 @@ function updateComparisonHelp() {
   if (serviceInfo && !routine) help = workloadUrgencyText;
   else if (sort.value !== "recommended") help = "Choose Recommended sorting to compare expected workloads.";
   get("load-help").textContent = help;
-  get("equity-help").textContent = routine
-    ? "Compare similar facilities using paired patient-reported respect and clinical outcome measures when available."
-    : equityUrgencyText;
 }
 
 function clearError() {
