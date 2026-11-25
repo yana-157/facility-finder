@@ -7,7 +7,7 @@
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>Find a health facility · Facility Finder</title>
   <link rel="stylesheet" href="./fonts/roboto.css">
-  <link rel="stylesheet" href="./styles.css?v=c821743c">
+  <link rel="stylesheet" href="./styles.css?v=d512378c">
   <link rel="stylesheet" href="./results.css?v=92da8587">
   <link rel="stylesheet" href="./directory.css?v=89f815fa">
   <script type="module" src="./app.js?v=ee6e64e7"></script>
@@ -113,10 +113,6 @@
           <div class="options-footer">
             <details class="expander advanced-settings" id="fit-settings">
               <summary>Advanced options</summary>
-              <div class="range-field result-limit">
-                <label for="limit">Results to show</label><output id="limit-value" for="limit">5</output>
-                <input type="range" id="limit" min="1" max="10" step="1" value="5">
-              </div>
               <fieldset class="fit-weights" aria-describedby="fit-weights-note">
                 <legend>Fit-score weights</legend>
                 <p class="caption" id="fit-weights-note"><strong>Why these defaults?</strong> We give equipment and staff the most weight (40%) because they’re matched to the service you chose. Round-the-clock opening (25%) comes next because it affects when you can visit. Accreditation and ratings (20%) describe the facility overall, and record freshness (15%) tells you how recently its details were checked. Set a slider to 0 to leave that factor out.</p>
@@ -159,16 +155,6 @@
         <div class="results-header">
           <h2 id="results-title" tabindex="-1">Search results</h2>
           <a class="jump-to-map" href="#map-title">View map</a>
-          <div id="results-controls" class="field results-controls" hidden>
-            <label for="sort">Sort by</label>
-            <select id="sort">
-              <option value="recommended">Recommended</option><option id="travel-sort" value="distance">Fastest drive</option>
-              <option value="straightLine" id="geographic-sort">Distance (nearest first)</option>
-              <option value="fit">Fit (highest first)</option><option value="beds">Capacity (most beds first)</option>
-              <option value="occupancy">Occupancy (lowest first)</option><option id="sort-priorities" value="priorities" hidden>Ranked criteria (best match first)</option>
-              <option value="confidence">Service confidence</option><option value="name">Name</option>
-            </select>
-          </div>
         </div>
         <p id="search-context" class="caption" role="status">Choose a service and enter a location to see options.</p>
         <p id="route-status" class="load-status" role="status" hidden></p>
@@ -179,6 +165,22 @@
         <p id="load-status" class="load-status" role="status" hidden></p>
         <p id="equity-status" class="load-status" role="status" hidden></p>
         <p id="verify-care" class="verification-note"><strong>Call before you travel.</strong> Ask the facility to confirm the service you need, its hours, and current availability.</p>
+        <div id="results-controls" class="results-controls" hidden>
+          <div class="field">
+            <label for="sort">Sort by</label>
+            <select id="sort">
+              <option value="recommended">Recommended</option><option id="travel-sort" value="distance">Fastest drive</option>
+              <option value="straightLine" id="geographic-sort">Distance (nearest first)</option>
+              <option value="fit">Fit (highest first)</option><option value="beds">Capacity (most beds first)</option>
+              <option value="occupancy">Occupancy (lowest first)</option><option id="sort-priorities" value="priorities" hidden>Ranked criteria (best match first)</option>
+              <option value="confidence">Service confidence</option><option value="name">Name</option>
+            </select>
+          </div>
+          <div class="range-field result-limit">
+            <label for="limit">Results to show</label><output id="limit-value" for="limit">5</output>
+            <input type="range" id="limit" min="1" max="10" step="1" value="5">
+          </div>
+        </div>
         <div id="result-list" class="result-list"></div>
       </section>
       <section class="map-panel" aria-labelledby="map-title">

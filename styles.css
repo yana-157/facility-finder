@@ -61,7 +61,6 @@ fieldset { min-inline-size: 0; padding: 0; border: 0; }
 .expander > summary, .card-details > summary { width: fit-content; max-width: 100%; padding-block: .38rem; color: var(--blue); font-size: .9rem; font-weight: 600; }
 .expander[open] > summary { margin-bottom: .25rem; }
 .expander > :last-child:not(summary) { margin-bottom: .9rem; }
-.result-limit { max-width: 23rem; }
 .fit-weights { padding-bottom: .25rem; }
 .fit-weights legend { font-size: .9rem; font-weight: 600; }
 .weight-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 1.5rem; }
@@ -131,8 +130,10 @@ fieldset { min-inline-size: 0; padding: 0; border: 0; }
 .finder-output:not([data-searched="true"]) .map-panel { grid-column: 1 / -1; }
 .results-panel, .map-panel { min-width: 0; }
 .results-header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .4rem .7rem; margin-bottom: .55rem; }
-.results-controls { max-width: 100%; }
-.results-controls label { font-size: .77rem; }
+.results-controls { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); align-items: start; gap: .5rem 1.2rem; margin-top: .85rem; }
+.results-controls label { font-size: .85rem; font-weight: 600; }
+.results-controls .result-limit { margin: 0; }
+.results-controls .result-limit input { height: 2.75rem; }
 .results-controls select { min-height: 2.75rem; }
 .load-status, .map-selection { margin: .4rem 0; font-size: .875rem; }
 .verification-note { margin: .95rem 0 .6rem; border-inline-start: 3px solid #ad7518; background: #fff7e5; padding: .65rem .8rem; font-size: .94rem; color: #493716; }
@@ -241,6 +242,7 @@ fieldset { min-inline-size: 0; padding: 0; border: 0; }
   #state-field { grid-column: 1 / -1; }
 }
 @media (max-width: 23.99rem) {
+  .results-controls { grid-template-columns: minmax(0, 1fr); }
   .options-layout { grid-template-columns: minmax(0, 1fr); gap: .65rem; }
   .options-layout > .field, .workload-option, .equity-control { grid-area: auto; grid-template-rows: auto auto; }
 }
@@ -250,7 +252,6 @@ fieldset { min-inline-size: 0; padding: 0; border: 0; }
   .form-layout { gap: 1rem; }
   .search-columns { row-gap: 1.1rem; }
   .finder-output { padding-top: 1.2rem; }
-  .results-controls { flex: 1 1 100%; }
   .results-controls select { max-width: 100%; }
   .map-heading { margin-bottom: .5rem; }
 }
