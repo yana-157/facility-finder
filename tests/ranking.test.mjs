@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import {createHash} from "node:crypto";
+import {readFile} from "node:fs/promises";
 import test from "node:test";
-import {haversineKm, parseRouteMatrix, rankFacilities, resolveOrigin} from "../ranking.js";
+import {attachClassicData, haversineKm, parseRouteMatrix, rankFacilities, resolveOrigin} from "../ranking.js";
 
 const origin = {lat: 18.52, lon: 73.85};
 
@@ -35,6 +37,64 @@ function search(data, options = {}) {
 function matrix(data, routes, travelMode = "driving") {
   return parseRouteMatrix({routes, travelMode, calculatedAt: "2026-11-24T12:00:00Z"}, data.matches.Dialysis, travelMode);
 }
+
+test("restored fields attach only to the exact published service and facility snapshot", async () => {
+  const [source, companionSource] = await Promise.all(["data.json", "classic-data.json"].map(name =>
+    readFile(new URL("../" + name, import.meta.url))));
+  const data = JSON.parse(source);
+  const companion = JSON.parse(companionSource);
+  const digest = createHash("sha256").update(source).digest("hex");
+  assert.throws(() => attachClassicData(data, companion, "0".repeat(64)), /do not match/);
+  assert.throws(() => attachClassicData(data, {...companion, matches: {}}, digest), /catalog/);
+  attachClassicData(data, companion, digest);
+  assert.deepEqual(data.services.find(row => row.label === "Dialysis").equipment, ["hemodialysis machine", "RO water plant"]);
+  assert.equal(new Set(data.services.map(row => row.specialty)).size, 13);
+  assert.ok(data.facilities.some(row => row.ownership === "Public"));
+  assert.ok(data.facilities.some(row => row.open24h === true));
+  assert.ok(data.facilities.every(row => row.occupancy === null && row.hours === null && row.lastVerified === null));
+  assert.ok(data.matches.Dialysis.some(row => row.matchedEquipment.length));
+});
+
+test("fit and occupancy only score reachable evidence-backed branches, retaining missing values", () => {
+  const data = fixture();
+  data.facilities[0].occupancy = 0.75;
+  data.facilities[0].open24h = true;
+  data.facilities[1].occupancy = 0.1;
+  data.facilities[2].occupancy = 0;
+  data.matches.Dialysis[0].capability = 0.25;
+  data.matches.Dialysis[1].capability = 0.75;
+  const routeMatrix = matrix(data, [{index: 0, seconds: 60}, {index: 1, seconds: 120}], "walking");
+  const byFit = weights => search(data, {sort: "fit", routeMatrix, fitWeights: weights}).results;
+  assert.deepEqual(byFit({capability: 1}).map(row => row.fitScore), [75, 25]);
+  assert.deepEqual(byFit({availability: 1}).map(row => row.fitScore), [100, null]);
+  assert.deepEqual(byFit({quality: 1}).map(row => row.fitScore), [null, null]);
+  assert.deepEqual(byFit({capability: 0}).map(row => row.fitScore), [null, null]);
+  assert.deepEqual(search(data, {sort: "occupancy", routeMatrix}).results.map(row => row.facility.occupancy), [0.1, 0.75]);
+  data.matches.Dialysis[1].excerpt = "";
+  assert.deepEqual(byFit({capability: 1}).map(row => row.fitScore), [25]);
+});
+
+test("ordered priorities use the selected mode's journey time and disclose missing observations", () => {
+  const data = fixture();
+  data.matches.Dialysis[0].confidence = 80;
+  data.matches.Dialysis[1].confidence = 20;
+  const routeMatrix = matrix(data, [{index: 0, seconds: 600}, {index: 1, seconds: 300}], "cycling");
+  const result = priorities => search(data, {sort: "priorities", priorities, routeMatrix}).results;
+  const [quick] = result(["travel", "evidence"]);
+  assert.equal(quick.facility.name, "Nearby");
+  assert.deepEqual(quick.priorityParts, [
+    {criterion: "travel", value: 1, weight: 0.75}, {criterion: "evidence", value: 0.2, weight: 0.25},
+  ]);
+  assert.equal(quick.priorityScore, 80);
+  assert.equal(result(["evidence", "travel"])[0].facility.name, "Nearest");
+  assert.deepEqual(result(["spare"]).map(row => row.priorityScore), [null, null]);
+  assert.deepEqual(result(["travel", "spare"]).map(row => row.priorityScore), [100, 0]);
+  data.facilities[0].occupancy = 0.9;
+  const [documented, unknown] = result(["spare"]);
+  assert.equal(documented.facility.name, "Nearest");
+  assert.equal(unknown.priorityScore, null);
+  assert.equal(unknown.priorityParts[0].value, null);
+});
 
 test("driving minutes reverse the distance order and exclude omitted branches for every sort", () => {
   const data = fixture();

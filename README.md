@@ -1,5 +1,7 @@
 # Facility Finder
 
+The [Data and methods report](https://yana-157.github.io/facility-finder/methods.html) follows the facility records from the source release through branch review, capacity experiments, search design and live routing checks. The report is served alongside the [public finder](https://yana-157.github.io/facility-finder/).
+
 The public site searches 9,076 facilities from the project's published release. The release is dated November 22, 2026 at 06:32 UTC. The team assessed service evidence for 18 services as of November 22. Both dates are recorded in `data.json`. Result cards distinguish reported bed counts from model estimates.
 
 Search for a care service by Indian PIN, city, district, or coordinates. Choose driving, walking, cycling, or public transport. Recommended combines the estimated weekday-morning journey time for that mode with service match and branch-specific evidence. Fastest ranks by journey time. A successful search includes branches reachable within three hours. Public transport coverage varies by location. When routing fails, the page labels its straight-line fallback. The routine-care load option compares published demand and modeled throughput when the first recommendation has a comparable nearby alternative.
@@ -12,6 +14,7 @@ Run `python3 -m http.server 8000` in this directory to preview. Run `node --test
 
 ```sh
 python3 build_data.py /path/to/datathon-F26
+python3 build_classic_data.py /path/to/datathon-F26
 ```
 
 ## Use Databricks as the data source
@@ -22,4 +25,4 @@ Databricks can prepare the publication-ready `data.json` feed and write it to a 
 2. Set the Actions repository variables `DATABRICKS_HOST` to the workspace URL, `DATABRICKS_CLIENT_ID` to the service principal application ID, and `DATABRICKS_PAGES_SNAPSHOT` to the approved `/Volumes/<catalog>/<schema>/<volume>/data.json` path.
 3. After the Databricks job finishes writing the feed, run **Publish Facility Finder** on `main` with **sync_databricks** enabled. Subsequent runs use the configured Databricks feed. A failed read leaves the previous Pages deployment in service. [GitHub Pages workflows](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
 
-When updating the snapshot, rebuild the routing backend's destination index from the exact same file. Before deploying, Pages checks the fastest and recommended dialysis rankings for driving, walking, and cycling in Jaipur and for public transport in Mumbai. Run `node scripts/check-travel-ranking.mjs data.json` to repeat these searches against the public routing backend.
+When updating the snapshot, rebuild the companion facility details and routing destination index from the exact same file. The companion carries the source checksum and the service taxonomy used by the restored search controls. If the snapshot and companion differ, publication stops. Before deploying, Pages checks the fastest and recommended dialysis rankings for driving, walking, and cycling in Jaipur and for public transport in Mumbai. Run `node scripts/check-travel-ranking.mjs data.json` to repeat these searches against the public routing backend.

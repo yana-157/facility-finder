@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="How Facility Finder turned a dated facility release into evidence-backed searches and compared travel, fit and projected workload.">
+  <title>Data and methods · Facility Finder</title>
+  <link rel="stylesheet" href="./report.css">
+</head>
+<body>
+  <header><a href="./">← Facility Finder</a></header>
+  <main>
+    <h1>Data and methods</h1>
+    <p class="lead">How we decided which facility branches to show, what to say about them, and how to rank a journey to care.</p>
+    <p class="date">Facility release and service evidence · 22 November 2026</p>
+    <nav aria-label="Sections"><a href="#release">Facility data</a><a href="#experiments">Experiments</a><a href="#ranking">Ranking and design</a><a href="#checks">Release checks</a></nav>
+
+    <section id="release">
+      <h2>From source records to searchable branches</h2>
+      <p>The project began with 10,088 India facility records from the Virtue Foundation dataset in Databricks. The team reconciled facility names, branch identities, coordinates, contacts and capacity against a dated source release. Conflicting branches and locations went through a separate review. The public search includes <strong>9,076 records with eligible coordinates</strong>. PIN, city and district searches start from the average location of matching facility records. A state can disambiguate a place name. Coordinates give the search a precise starting point. <a href="https://github.com/yana-157/facility-finder/blob/main/build_data.py">Snapshot preparation</a></p>
+      <p>For each of 18 services, the classifier looked for branch-specific reviewed claims, listings or mentions with supporting text. An eligible branch–service pair carries the matched term, an excerpt, the kind of evidence and source links where available. The release contains <strong>24,651 assessments</strong>. These include 15,774 facility-record listings and 8,872 text mentions. Five others cite corroboration, a hospital source or a reviewed directory. The score gives up to 80 points for the service evidence and 20 for branch identity. A mention in a description can leave important details, such as emergency cover, unresolved. <a href="https://github.com/augustchu/datathon-F26/blob/ed9d1a8/first-prototype/classic_confidence.py">Service evidence rules</a></p>
+      <p>The public release was published at 06:32 UTC on 22 November. The app shows that date separately from the time TravelTime calculated a journey. An average weekday-morning journey can change as the routing provider updates its networks. Facility hours, staffing and appointment availability require confirmation with the branch.</p>
+    </section>
+    <section id="experiments">
+      <h2>What we tested and what changed</h2>
+      <h3>Can we fill missing bed counts?</h3>
+      <p>The team compared source-selection rules for conflicting counts and tested a boosted-tree model on facilities with known counts. The selected rule favors the newest eligible whole-facility count from the same branch. The model had a mean absolute error of <strong>110.22 beds across 455 held-out records</strong>. Across the full 10,088-row release, the process retained 2,713 published counts, estimated 6,833 and left 542 blank. The public cards distinguish reported beds, model estimates and missing values, and show the published estimate interval when available. Bed totals describe facility scale. <a href="https://github.com/augustchu/datathon-F26/blob/ed9d1a8/max-supplemented-data/experiments/capacity/NEWEST_CAPACITY_RELEASE.md">Capacity experiment and release</a></p>
+      <h3>Does the service search retrieve a documented branch?</h3>
+      <p>An earlier offline benchmark exercised 16 urban and rural searches. Five produced ranked lists, seven requested an unsupported service or travel mode, and four place names could not be resolved. One of the five scored lists contained a known reference branch in its top five. Other results had incomplete reference judgments. One emergency C-section search retrieved excerpts about C-sections that did not establish emergency availability. The public interface puts the excerpt and source within reach of each recommendation and offers travel mode as an explicit choice. <a href="https://github.com/augustchu/datathon-F26/tree/18335aa/recommendation-benchmark">Benchmark queries and reference design</a></p>
+      <h3>When is projected workload informative?</h3>
+      <p>The team modeled monthly caseload and throughput for 181,386 facility–service combinations to explore distributing additional routine work. Only <strong>38 branch–service pairs at 19 exact branches</strong> had historical activity in the relevant scope. The public release includes those 38 projections. A broad peer forecast provides too little evidence to change a person's facility recommendation on its own. <a href="https://github.com/augustchu/datathon-F26/blob/af89658/non-ml/caseload/NETWORK_CASELOAD.md">Caseload experiment and evidence coverage</a></p>
+    </section>
+    <section id="ranking">
+      <h2>How the findings shaped the interface</h2>
+      <p>The restored design groups decisions into <strong>Service</strong>, <strong>Location</strong> and <strong>Options</strong>. Browse by specialty or body area, choose a starting point, then select a travel mode. The cards and numbered map pins share the same ordering so you can compare a branch's evidence with its location and contact details. The sidebar controls result count and fit weights. <a href="https://github.com/augustchu/datathon-F26/blob/ed9d1a8/first-prototype/MAP_RESTORE.md">Original interface decisions</a></p>
+      <dl>
+        <dt>Recommended and fastest</dt><dd>The Cloudflare Worker asks TravelTime for typical weekday-morning trips of up to three hours by driving, walking, cycling or public transport. Fastest uses the selected mode's minutes. Recommended adds a service-match penalty and a branch-specific confidence penalty to those minutes. A branch without a returned journey drops out of a successful route search. If estimates are switched off or the service fails, the page explicitly labels straight-line kilometres. A successful transit search with zero routes shows that outcome and offers a separate driving search. <a href="https://docs.traveltime.com/api/reference/time-filter-fast">TravelTime matrix</a> · <a href="https://docs.traveltime.com/api/overview/supported-countries">Coverage by country</a></dd>
+        <dt>Fit and personal priorities</dt><dd>Fit starts with weights of 40% for equipment and staff, 25% for round-the-clock availability, 20% for accreditation and rating, and 15% for freshness. The sliders let you change those weights. The calculation uses the documented components available for the branch and shows missing evidence. Under Advanced options, choose and order criteria, then select Ranked criteria. The first criterion carries the most weight. The score breakdown shows how much evidence contributed. <a href="https://github.com/yana-157/facility-finder/blob/main/ranking.js">Ranking calculations</a></dd>
+        <dt>Projected load and equity</dt><dd>Projected load compares routine-care alternatives to the first Recommended branch only when service evidence, activity unit, scope and reporting period align. A routed alternative must be within 15 additional minutes and 10 additional straight-line kilometres. The comparison balances detour against modeled workload pressure. The equity control requires comparable branch-level measures of patient-reported respect and clinical outcomes. The public snapshot has no such pairs. It discloses that gap when the option is selected.</dd>
+      </dl>
+      <h3>A routine dialysis comparison in Himachal Pradesh</h3>
+      <p>Choose Dialysis, enter coordinates <strong>31.833, 77.018</strong>, keep urgency at Routine and use Recommended. For this historical comparison, switch off TravelTime so the travel measure matches the experiment. Mandi's Netaji Subhash Chandra Bose Zonal Hospital starts first at 16.02 straight-line kilometres. With <strong>Consider projected load</strong> on, Regional Hospital Kullu moves from second to first at 16.34 km. Kullu's modeled typical monthly demand was 275.92 sessions against throughput of 377.60, compared with 385.33 against 424.80 at Mandi. The choice trades 0.32 additional kilometres for lower modeled workload pressure. Actual road journeys and available appointments require separate checks. <a href="https://github.com/augustchu/datathon-F26/blob/9fe804b/first-prototype/projected_load.csv">Published branch-level projections</a></p>
+    </section>
+    <section id="checks">
+      <h2>How to check a published search</h2>
+      <p>Choose <strong>Dialysis</strong> and <strong>City</strong>. Enter Jaipur, Rajasthan for driving, walking or cycling. For public transport, use Mumbai, Maharashtra. Choose the fastest sort to see the shortest returned journey. In the 24 November release checks, Jaipur returned 14 driving, 13 walking and 14 cycling routes. Mumbai returned 39 transit routes. Jaipur's transit search returned none, which also let us test the empty result.</p>
+      <p>Before publication, the release check hashes the exact facility snapshot, requests each mode through the same Worker the browser uses, and rebuilds the fastest and Recommended orders from the returned seconds. The app shows its calculation time so another search can be interpreted against its own result. <a href="https://github.com/yana-157/facility-finder/blob/main/scripts/check-travel-ranking.mjs">Live ranking check</a> · <a href="https://github.com/yana-157/facility-finder">Public source and snapshot</a></p>
+    </section>
+    <footer><a href="./">Return to Facility Finder</a></footer>
+  </main>
+</body>
+</html>

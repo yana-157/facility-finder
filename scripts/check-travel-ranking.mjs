@@ -1,17 +1,20 @@
 import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
 import {readFile} from "node:fs/promises";
+import {pathToFileURL} from "node:url";
 import {setTimeout as delay} from "node:timers/promises";
-import {ROUTING_URL, parseRouteMatrix, rankFacilities, resolveOrigin} from "../ranking.js";
+import {ROUTING_URL, attachClassicData, parseRouteMatrix, rankFacilities, resolveOrigin} from "../ranking.js";
 
 // Use a public city centroid, with the same facility snapshot and ranking code as the page.
-const file = process.argv[2] || new URL("../data.json", import.meta.url);
+const file = process.argv[2] ? pathToFileURL(process.argv[2]) : new URL("../data.json", import.meta.url);
 const bytes = await readFile(file);
 const data = JSON.parse(bytes);
 const jaipur = resolveOrigin(data, {type: "city", query: "Jaipur", state: "Rajasthan"});
 const mumbai = resolveOrigin(data, {type: "city", query: "Mumbai", state: "Maharashtra"});
 const service = "Dialysis";
 const snapshotSha256 = createHash("sha256").update(bytes).digest("hex");
+const classic = JSON.parse(await readFile(new URL("classic-data.json", file), "utf8"));
+attachClassicData(data, classic, snapshotSha256);
 const siteOrigin = "https://yana-157.github.io";
 const headers = {Origin: siteOrigin};
 const options = {credentials: "omit", redirect: "error"};

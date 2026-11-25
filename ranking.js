@@ -19,8 +19,56 @@ export const TRAVEL_MODES = {
   cycling: {label: "Cycling", trip: "bike ride", mapsMode: "bicycling"},
   public_transport: {label: "Public transport", trip: "public transport trip", mapsMode: "transit"},
 };
+export const DEFAULT_FIT_WEIGHTS = {capability: 0.4, availability: 0.25, quality: 0.2, freshness: 0.15};
+const PRIORITIES = ["travel", "evidence", "capability", "availability", "quality", "freshness", "spare"];
 const MAX_EXTRA_MINUTES = 15;
 const MINUTES_PER_KM_EQUIVALENT = 2;
+
+export function attachClassicData(data, companion, snapshotSha256) {
+  if (!/^[a-f0-9]{64}$/u.test(snapshotSha256) || companion?.snapshotSha256 !== snapshotSha256
+      || companion.facilities?.length !== data.facilities.length) {
+    throw new Error("The additional facility details do not match the published snapshot.");
+  }
+  const matchedTerms = (indices, terms) => {
+    if (indices === null) return null;
+    if (!Array.isArray(indices) || !indices.every(i => Number.isInteger(i) && i >= 0 && i < terms.length)) {
+      throw new Error("Invalid equipment or staff evidence.");
+    }
+    return indices.map(index => terms[index]);
+  };
+  const catalog = data.services.map(option => {
+    const details = companion.services?.[option.label];
+    const pairs = companion.matches?.[option.label];
+    if (!details?.specialty || !details.area || !Array.isArray(details.equipment) || !Array.isArray(details.staff)
+        || !Array.isArray(pairs) || pairs.length !== data.matches[option.label].length) {
+      throw new Error("The additional details use a different service catalog.");
+    }
+    const evidence = pairs.map(([equipment, staff]) => ({
+      equipment: matchedTerms(equipment, details.equipment), staff: matchedTerms(staff, details.staff),
+    }));
+    return {option, details, evidence};
+  });
+  data.facilities.forEach((facility, index) => {
+    const details = companion.facilities[index];
+    for (const key of ["ownership", "facilityType", "source", "hours", "open24h", "occupancy",
+      "accreditation", "rating", "lastVerified"]) {
+      facility[key] = details[key] ?? null;
+    }
+  });
+  for (const {option, details, evidence} of catalog) {
+    Object.assign(option, details);
+    data.matches[option.label].forEach((assessment, index) => {
+      const {equipment, staff} = evidence[index];
+      assessment.matchedEquipment = equipment ?? [];
+      assessment.matchedStaff = staff ?? [];
+      const documented = [];
+      if (equipment && details.equipment.length) documented.push(equipment.length / details.equipment.length);
+      if (staff && details.staff.length) documented.push(staff.length / details.staff.length);
+      assessment.capability = mean(documented);
+    });
+  }
+  return data;
+}
 
 export function parseRouteMatrix(payload, assessments, travelMode = "driving") {
   const calculatedAt = new Date(payload?.calculatedAt);
@@ -145,11 +193,71 @@ function compareRecommended(left, right) {
 }
 
 const OTHER_SORTS = {
+  straightLine: (left, right) => left.distanceKm - right.distanceKm,
   distance: (left, right) => left.scoreParts.travel - right.scoreParts.travel,
   confidence: (left, right) => right.assessment.confidence - left.assessment.confidence,
   beds: (left, right) => (right.facility.beds ?? -1) - (left.facility.beds ?? -1),
   name: (left, right) => COLLATOR.compare(left.facility.name, right.facility.name),
+  fit: (left, right) => (right.fitScore ?? -1) - (left.fitScore ?? -1),
+  occupancy: (left, right) => (left.facility.occupancy ?? 2) - (right.facility.occupancy ?? 2),
+  priorities: (left, right) => (right.priorityScore ?? -1) - (left.priorityScore ?? -1),
 };
+
+function mean(values) {
+  return values.length ? values.reduce((total, value) => total + value, 0) / values.length : null;
+}
+
+function assessFit(facility, assessment, asOf, weights) {
+  const quality = [];
+  if (facility.accreditation) quality.push(1);
+  if (Number.isFinite(facility.rating) && facility.rating >= 0 && facility.rating <= 5) quality.push(facility.rating / 5);
+  const ageMonths = (Date.parse(asOf) - Date.parse(facility.lastVerified)) / (30 * 86400000);
+  let freshness = null;
+  if (Number.isFinite(ageMonths) && ageMonths >= 0) freshness = ageMonths <= 6 ? 1 : ageMonths <= 12 ? 0.8 : 0.5;
+  const components = {
+    capability: assessment.capability ?? null,
+    availability: typeof facility.open24h === "boolean" ? Number(facility.open24h) : null,
+    quality: mean(quality), freshness,
+  };
+  let total = 0;
+  let weightUsed = 0;
+  for (const [key, value] of Object.entries(components)) {
+    if (value === null || !Number.isFinite(weights[key]) || weights[key] <= 0) continue;
+    total += value * weights[key];
+    weightUsed += weights[key];
+  }
+  return {fitComponents: components, fitScore: weightUsed ? assessment.match * total / weightUsed : null};
+}
+
+function scorePriorities(ranked, priorities) {
+  const order = [...new Set(priorities)].filter(key => PRIORITIES.includes(key));
+  if (!order.length || !ranked.length) return;
+  const costs = ranked.map(row => row.scoreParts.travel);
+  const min = Math.min(...costs);
+  const max = Math.max(...costs);
+  const weights = order.map((_, index) => {
+    let total = 0;
+    for (let rank = index + 1; rank <= order.length; rank++) total += 1 / rank;
+    return total / order.length;
+  });
+  for (const result of ranked) {
+    const values = {
+      ...result.fitComponents, travel: max === min ? 1 : (max - result.scoreParts.travel) / (max - min),
+      evidence: result.assessment.confidence / 100,
+      spare: Number.isFinite(result.facility.occupancy) ? 1 - result.facility.occupancy : null,
+    };
+    result.priorityParts = order.map((criterion, index) => ({criterion, value: values[criterion], weight: weights[index]}));
+  }
+  // Omit criteria undocumented throughout this search. A partially documented branch cannot outscore
+  // fully documented branches simply because evidence for one of the available criteria is missing.
+  const active = order.map((_, i) => ranked.some(result => result.priorityParts[i].value !== null));
+  const applicable = weights.reduce((total, weight, i) => total + (active[i] ? weight : 0), 0);
+  for (const result of ranked) {
+    if (!applicable || result.priorityParts.some((part, i) => active[i] && part.value === null)) continue;
+    const total = result.priorityParts.reduce((score, part) => score + (part.value ?? 0) * part.weight, 0);
+    result.priorityScore = 100 * total / applicable;
+  }
+}
 
 function projectionsFor(projections, service) {
   const matching = new Map();
@@ -236,6 +344,7 @@ function compareProjectedLoad(ranked, projections, service) {
 
 export function rankFacilities(data, {
   service, origin, sort = "recommended", severity = "routine", considerLoad = false, limit = 5, routeMatrix = null,
+  fitWeights = DEFAULT_FIT_WEIGHTS, priorities = [],
 }) {
   const ranked = [];
   const penaltyScale = routeMatrix ? MINUTES_PER_KM_EQUIVALENT : 1;
@@ -260,8 +369,11 @@ export function rankFacilities(data, {
       driveMinutes: routeMatrix?.travelMode === "driving" ? travelMinutes : null,
       scoreParts: {travel, matchPenalty, confidencePenalty: confidenceCost},
       recommendedScore: travel + matchPenalty + confidenceCost,
+      ...assessFit(facility, assessment, data.classifiedAsOf, fitWeights),
+      priorityScore: null, priorityParts: [],
     });
   }
+  if (sort === "priorities") scorePriorities(ranked, priorities);
   const compare = Object.hasOwn(OTHER_SORTS, sort) ? OTHER_SORTS[sort] : compareRecommended;
   ranked.sort((left, right) => compare(left, right) || compareRecommended(left, right));
   ranked.forEach((result, index) => {

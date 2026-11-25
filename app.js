@@ -1,10 +1,25 @@
-import { parseRouteMatrix, resolveOrigin, rankFacilities, ROUTING_URL, TRAVEL_MODES } from "./ranking.js";
+import { attachClassicData, parseRouteMatrix, resolveOrigin, rankFacilities, ROUTING_URL, TRAVEL_MODES } from "./ranking.js";
 import { facilityMap } from "./map.js";
+import { resultCard, contactsTable } from "./results.js";
 
 const get = id => document.getElementById(id);
 const form = get("finder-form");
 const service = get("service");
 const travelMode = get("travel-mode");
+const useTravelTime = get("use-traveltime");
+const advanced = get("advanced-options");
+const equity = get("consider-equity");
+const group = get("service-group");
+const weightInputs = {
+  capability: get("weight-capability"), availability: get("weight-availability"),
+  quality: get("weight-quality"), freshness: get("weight-confidence"),
+};
+const priorityLabels = {
+  travel: "Travel (shorter is better)", evidence: "Service evidence",
+  capability: "Equipment & staff match", availability: "Open around the clock",
+  quality: "Accreditation & rating", freshness: "Up-to-date record", spare: "Spare capacity (lower occupancy)",
+};
+const priorityOrder = [];
 const locationType = get("location-type");
 const severity = get("severity");
 const query = get("query");
@@ -31,14 +46,6 @@ const formatDate = new Intl.DateTimeFormat("en-GB", {
 const formatPublication = new Intl.DateTimeFormat("en-GB", {
   dateStyle: "medium", timeStyle: "short", timeZone: "UTC",
 });
-const evidenceLabels = {
-  corroborated: "Hospital source and independent corroboration",
-  hospital_site: "Listed by hospital",
-  directory: "Listed in a reviewed directory",
-  record_listing: "Listed in facility record",
-  mention: "Mentioned in facility record",
-};
-
 let data;
 let snapshotSha256;
 let origin;
@@ -46,6 +53,8 @@ let activeResults = [];
 const routeLookups = new Map();
 let searchVersion = 0;
 let displayedRouting;
+let searchStarted = false;
+let locationTimer;
 
 function element(tag, text = "", className = "") {
   const node = document.createElement(tag);
@@ -73,13 +82,6 @@ function externalLink(text, url) {
   link.target = "_blank";
   link.rel = "noopener noreferrer";
   return link;
-}
-
-function appendLinks(container, definitions) {
-  for (const [title, url] of definitions) {
-    const link = externalLink(title, url);
-    if (link) container.append(link);
-  }
 }
 
 function status(node, message) {
@@ -151,6 +153,11 @@ function updateLoadControl() {
   if (serviceInfo && !routine) help = "Load balancing is available for routine, non-time-critical care.";
   else if (sort.value !== "recommended") help = "Choose Recommended sorting to use load balancing.";
   get("load-help").textContent = help;
+  equity.disabled = !routine;
+  if (!routine) equity.checked = false;
+  get("equity-help").textContent = routine
+    ? "Compare similar facilities using paired patient-reported respect and clinical outcome measures when available."
+    : "Equity comparisons are paused for time-critical care.";
 }
 
 function clearError() {
@@ -164,118 +171,17 @@ function markError(message, fields, focus = true) {
   if (focus) fields[0]?.focus();
 }
 
-function numberMetric(label, value) {
-  const metric = element("div");
-  metric.append(element("dt", label), element("dd", value));
-  return metric;
-}
-
-function formatBeds(facility) {
-  const beds = Number(facility.beds);
-  if (!Number.isFinite(beds) || beds <= 0) return ["Beds", "Unavailable"];
-  const kind = String(facility.capacityStatus || "").toLowerCase();
-  return [/(estimat|model|predict)/.test(kind) ? "Estimated beds" : "Reported beds", formatNumber.format(beds)];
-}
-
-function callLink(phone) {
-  if (!phone) return null;
-  const first = String(phone).split(/[/;]/, 1)[0];
-  const number = first.replace(/[^+\d]/g, "");
-  if (!/^\+?\d{7,15}$/.test(number)) return element("span", String(phone));
-  const phoneLink = element("a", first.trim());
-  phoneLink.href = "tel:" + number;
-  return phoneLink;
-}
-
-function reportEvidence(result) {
-  const { assessment, facility, scoreParts, projectedLoad, recommendedScore } = result;
-  const details = element("details", "", "card-details");
-  details.append(element("summary", "Service evidence and score"));
-  const label = evidenceLabels[assessment.kind] ?? "Service evidence";
-  details.append(element("p", `${label} · service evidence ${assessment.servicePoints}/80 · branch identity ${assessment.branchPoints}/20`));
-  if (assessment.excerpt) details.append(element("blockquote", assessment.excerpt));
-  const evidenceLinks = element("div", "", "card-links");
-  appendLinks(evidenceLinks, (assessment.urls ?? []).map((url, index) => [`Service source ${index + 1}`, url]));
-  appendLinks(evidenceLinks, [["Capacity source", facility.capacitySourceUrl]]);
-  if (evidenceLinks.childElementCount) details.append(evidenceLinks);
-  if (sort.value === "recommended") {
-    const score = formatDecimal.format(recommendedScore);
-    const unit = result.travelMinutes == null ? "km" : "min";
-    details.append(element("p", `Recommended score ${score} ${unit} equivalent. Travel contributes ${formatDecimal.format(scoreParts.travel)} ${unit}, the service match adds ${formatDecimal.format(scoreParts.matchPenalty)}, and evidence confidence adds ${formatDecimal.format(scoreParts.confidencePenalty)}.`));
-  }
-  if (projectedLoad) {
-    const demand = projectedLoad.caseloadPredicted ? "Projected demand" : "Historical demand";
-    details.append(
-      element("p", `${demand} ${formatDecimal.format(projectedLoad.caseload)} ${projectedLoad.unit}/month · modeled throughput ${formatDecimal.format(projectedLoad.capacity)} ${projectedLoad.unit}/month.`),
-      element("p", `${projectedLoad.scope} · ${projectedLoad.period} · planning estimate.`),
-      element("p", `Load comparison score ${projectedLoad.comparisonScore.toFixed(3)} · lower is better · baseline rank #${result.baselineRank}.`),
-    );
-    const sourceLinks = element("div", "", "card-links");
-    appendLinks(sourceLinks, [["Demand source", projectedLoad.sourceUrl], ["Throughput source", projectedLoad.capacitySourceUrl]]);
-    if (sourceLinks.childElementCount) details.append(sourceLinks);
-  }
-  return details;
-}
-
-function resultCard(result, index) {
-  const { facility, assessment, distanceKm, travelMinutes } = result;
-  const mode = TRAVEL_MODES[travelMode.value];
-  const rank = index + 1;
-  const card = element("article", "", "result-card");
-  card.id = "facility-" + rank;
-  card.tabIndex = -1;
-  const name = element("h3", facility.name || "Unnamed facility");
-  name.id = "facility-title-" + rank;
-  card.setAttribute("aria-labelledby", name.id);
-  const header = element("div", "", "card-header");
-  const rankElement = element("span", String(rank), "rank");
-  rankElement.setAttribute("aria-label", "Rank " + rank);
-  const headerText = element("div");
-  headerText.append(name);
-  const place = [...new Set([facility.city, facility.district, facility.state, facility.pin && "PIN " + facility.pin].filter(Boolean))].join(" · ");
-  if (place) headerText.append(element("p", place, "card-place"));
-  header.append(rankElement, headerText);
-  card.append(header);
-  const address = (facility.address ?? "").split(",").map(part => part.trim())
-    .filter(part => part && !/^(null|none|nan|n\/a)$/i.test(part)).join(", ");
-  if (address) card.append(element("p", address, "card-address"));
-
-  const metrics = element("dl", "", "card-metrics");
-  metrics.append(
-    travelMinutes == null
-      ? numberMetric("Straight-line distance", `${distanceKm.toFixed(1)} km`)
-      : numberMetric(`${mode.label} time`, `${formatDecimal.format(travelMinutes)} min`),
-    numberMetric("Service confidence", `${assessment.confidence}/100`),
-    numberMetric(...formatBeds(facility)),
-  );
-  card.append(metrics);
-
-  const links = element("div", "", "card-links");
-  const call = callLink(facility.phone);
-  if (call) links.append(call);
-  const locate = element("button", "Show on map", "button-text");
-  locate.type = "button";
-  locate.addEventListener("click", () => focusResult(index, true));
-  links.append(locate);
-  const directions = new URL("https://www.google.com/maps/dir/");
-  directions.searchParams.set("api", "1");
-  directions.searchParams.set("origin", `${origin.lat},${origin.lon}`);
-  directions.searchParams.set("destination", `${facility.lat},${facility.lon}`);
-  directions.searchParams.set("travelmode", mode.mapsMode);
-  appendLinks(links, [["Directions", directions.href], ["Facility website", facility.website]]);
-  card.append(links);
-  if (!call) card.append(element("p", "Phone unavailable in this snapshot.", "card-note"));
-  if (result.projectedLoad && result.baselineRank > 1 && rank === 1) {
-    card.append(element("p", `Moved up from #${result.baselineRank} after projected load comparison.`, "card-note"));
-  }
-  card.append(reportEvidence(result));
-  return card;
+function fitWeights() {
+  return Object.fromEntries(Object.entries(weightInputs).map(([name, input]) => [name, Number(input.value)]));
 }
 
 function renderSearch(routeMatrix) {
+  const weights = fitWeights();
+  const serviceInfo = data.services.find(item => item.label === service.value);
   const result = rankFacilities(data, {
     service: service.value, origin, severity: severity.value, sort: sort.value,
-    considerLoad: considerLoad.checked, limit: Number(limit.value), routeMatrix,
+    considerLoad: considerLoad.checked, limit: Number(limit.value), routeMatrix, fitWeights: weights,
+    priorities: advanced.checked ? priorityOrder : [],
   });
   activeResults = result.results;
   const place = origin.label + (origin.approximate ? " (approximate)" : "");
@@ -290,15 +196,25 @@ function renderSearch(routeMatrix) {
     context.textContent = `No options with service evidence for ${service.value} were found near ${place}.`;
   }
   get("travel-sort").textContent = routeMatrix ? `Fastest ${mode.trip}` : "Shortest straight-line distance";
+  get("geographic-sort").hidden = !routeMatrix && sort.value !== "straightLine";
+  let sortNote = "";
+  if (sort.value === "straightLine") sortNote = "Ordered by straight-line distance from your starting point.";
+  if (count && sort.value === "occupancy" && activeResults.every(item => item.facility.occupancy == null))
+    sortNote = "These branches have no recorded occupancy. Ties follow the Recommended order.";
+  if (count && sort.value === "priorities" && activeResults.every(item => item.priorityScore == null))
+    sortNote = "The available records do not support a score for these priorities. Ties follow the Recommended order.";
+  status(get("sort-status"), sortNote);
   if (routeMatrix) {
     routeStatus.hidden = false;
     routeStatus.replaceChildren(externalLink("TravelTime", "https://traveltime.com/"),
       ` weekday-morning ${mode.label.toLowerCase()} estimates · calculated ${formatPublication.format(routeMatrix.calculatedAt)} UTC.`);
   } else {
-    status(routeStatus, `${mode.label} estimates are unavailable. These results use straight-line distance.`);
+    status(routeStatus, useTravelTime.checked
+      ? `${mode.label} estimates are unavailable. These results use straight-line distance.`
+      : "TravelTime estimates are off. Distances are measured in a straight line.");
   }
   controls.hidden = !count;
-  drivingAlternatives.hidden = travelMode.value === "driving" || Boolean(routeMatrix && count);
+  drivingAlternatives.hidden = !useTravelTime.checked || travelMode.value === "driving" || Boolean(routeMatrix && count);
   const loadText = {
     sort: "Choose Recommended sorting to compare projected load.",
     unavailable: "The first recommendation has no comparable nearby alternative with usable projected load. Showing the baseline order.",
@@ -306,11 +222,18 @@ function renderSearch(routeMatrix) {
     changed: `Compared projected monthly load for ${result.comparisonCount} nearby facilities. ${activeResults[0]?.facility.name} moved to first.`,
   };
   status(loadStatus, count ? loadText[result.loadStatus] ?? "" : "");
-  list.replaceChildren(...activeResults.map(resultCard));
+  status(get("equity-status"), equity.checked && count
+    ? "The published snapshot has no paired evidence on patient-reported respect and clinical outcomes for these facilities. The displayed order uses your selected sort." : "");
+  const cardOptions = {service: service.value, serviceInfo, travelMode: travelMode.value, sort: sort.value, origin,
+    fitWeights: weights, snapshotDate: data.classifiedAsOf, sourceUrl: data.sourceUrl, projectionSourceUrl: data.projectionSourceUrl,
+    onShowMap: index => focusResult(index, true)};
+  list.replaceChildren(...activeResults.map((item, index) => resultCard(item, index, cardOptions)));
+  get("contacts").hidden = !count;
+  get("contact-table").replaceChildren(...(count ? [contactsTable(activeResults, cardOptions)] : []));
   if (!count) list.append(element("p", "Try another travel mode, service or starting location.", "empty-card"));
   get("map-context").textContent = place;
   status(mapSelection, "");
-  map.show(origin, activeResults.map(item => item.facility));
+  map.show(origin, activeResults, {travelMode: travelMode.value});
 }
 
 function fetchRoutes(location, serviceName, selectedMode) {
@@ -339,9 +262,13 @@ function clearResults(message) {
   controls.hidden = true;
   drivingAlternatives.hidden = true;
   list.replaceChildren();
+  get("contacts").hidden = true;
+  get("contact-table").replaceChildren();
+  status(get("equity-status"), "");
   status(mapSelection, "");
   status(loadStatus, "");
   status(routeStatus, "");
+  status(get("sort-status"), "");
   context.textContent = message;
   get("map-context").textContent = origin?.label ?? "India";
   map.show(origin, []);
@@ -351,11 +278,13 @@ function invalidateSearch() {
   if (!origin) return;
   searchVersion++;
   origin = undefined;
+  delete get("finder-output").dataset.searched;
   clearResults("Choose a service and enter a location to see options.");
 }
 
 async function search({ focus = true } = {}) {
   if (!data) return;
+  clearTimeout(locationTimer);
   const version = ++searchVersion;
   clearError();
   if (!service.value) {
@@ -373,12 +302,14 @@ async function search({ focus = true } = {}) {
     markError(cause.message, locationType.value === "coordinates" ? [latitude, longitude] : [query], focus);
     return;
   }
+  searchStarted = true;
+  get("finder-output").dataset.searched = "true";
   const selectedMode = travelMode.value;
   clearResults(`Finding ${TRAVEL_MODES[selectedMode].label.toLowerCase()} times for ${service.value} near ${origin.label}…`);
   if (focus) scrollTo(get("results-title"));
   let matrix;
   try {
-    matrix = await fetchRoutes(origin, service.value, selectedMode);
+    matrix = useTravelTime.checked ? await fetchRoutes(origin, service.value, selectedMode) : null;
   } catch {
     matrix = null;
   }
@@ -387,57 +318,168 @@ async function search({ focus = true } = {}) {
   renderSearch(matrix);
 }
 
+function rerank() {
+  if (displayedRouting !== undefined) renderSearch(displayedRouting);
+}
+
+function updateSearchButton() {
+  const hasLocation = locationType.value === "coordinates" ? latitude.value.trim() && longitude.value.trim()
+    : locationType.value === "pin" ? /^\d{6}$/.test(query.value.trim()) : query.value.trim();
+  get("search-button").disabled = !(data && service.value && hasLocation);
+}
+
+function selectService() {
+  const info = data.services.find(item => item.label === service.value);
+  if (!info) return;
+  get("service-meta").textContent = [info.specialty, info.area, info.urgent && "Time-critical"].filter(Boolean).join(" · ");
+  severity.value = info.urgent ? "urgent" : "routine";
+  updateSearchButton();
+  updateLoadControl();
+  if (origin) search({focus: false});
+}
+
+function groupField() {
+  return get("browse-area").checked ? "area" : "specialty";
+}
+
+function updateServices() {
+  const previous = service.value;
+  const key = groupField();
+  const services = data.services.filter(item => !group.value || item[key] === group.value)
+    .sort((a, b) => a[key].localeCompare(b[key]));
+  service.replaceChildren(...services.map(item => new Option(item.label, item.label)));
+  if (services.some(item => item.label === previous)) service.value = previous;
+  if (previous !== service.value) selectService();
+}
+
+function updateGroups() {
+  const key = groupField();
+  const groups = [...new Set(data.services.map(item => item[key]))].sort();
+  get("service-group-label").textContent = key === "area" ? "Afflicted body area" : "Specialty";
+  const choices = groups.map(value => new Option(value, value));
+  if (key === "specialty") choices.unshift(new Option("All specialties", ""));
+  group.replaceChildren(...choices);
+  updateServices();
+}
+
+function syncPriorities() {
+  const enabled = advanced.checked && priorityOrder.length > 0;
+  get("priority-controls").hidden = !advanced.checked;
+  get("sort-priorities").hidden = !enabled;
+  get("sort-priorities").disabled = !enabled;
+  if (!enabled && sort.value === "priorities") sort.value = "recommended";
+  for (const [key, label] of Object.entries(priorityLabels)) {
+    const order = get("order-" + key);
+    const position = priorityOrder.indexOf(key);
+    order.hidden = position === -1;
+    if (position < 0) continue;
+    order.setAttribute("aria-label", "Priority rank for " + label);
+    order.replaceChildren(...priorityOrder.map((_, i) => new Option(String(i + 1), String(i))));
+    order.value = String(position);
+  }
+  status(get("priority-summary"), priorityOrder.length
+    ? "Priority order: " + priorityOrder.map(key => priorityLabels[key]).join(" · ") : "");
+  updateLoadControl();
+  rerank();
+}
+
+function buildPriorityControls() {
+  for (const [key, text] of Object.entries(priorityLabels)) {
+    const row = element("div", "", "priority-row");
+    const label = element("label");
+    const choice = element("input");
+    choice.type = "checkbox";
+    choice.id = "priority-" + key;
+    const order = element("select");
+    order.id = "order-" + key;
+    order.hidden = true;
+    choice.addEventListener("change", () => {
+      if (choice.checked) priorityOrder.push(key);
+      else priorityOrder.splice(priorityOrder.indexOf(key), 1);
+      syncPriorities();
+    });
+    order.addEventListener("change", () => {
+      priorityOrder.splice(priorityOrder.indexOf(key), 1);
+      priorityOrder.splice(Number(order.value), 0, key);
+      syncPriorities();
+    });
+    label.append(choice, document.createTextNode(" " + text));
+    row.append(label, order);
+    get("priority-list").append(row);
+  }
+}
+
 form.addEventListener("submit", event => {
   event.preventDefault();
   search();
 });
-service.addEventListener("change", () => {
-  if (data?.services.find(option => option.label === service.value)?.urgent && severity.value === "routine") {
-    severity.value = "urgent";
-  }
-  updateLoadControl();
-  if (origin) search({ focus: false });
-});
-travelMode.addEventListener("change", () => {
-  if (origin) search({ focus: false });
+service.addEventListener("change", selectService);
+for (const radio of document.querySelectorAll('[name="browse-by"]')) radio.addEventListener("change", updateGroups);
+group.addEventListener("change", updateServices);
+travelMode.addEventListener("change", () => { if (origin) search({focus: false}); });
+useTravelTime.addEventListener("change", () => {
+  travelMode.disabled = !useTravelTime.checked;
+  if (origin) search({focus: false});
 });
 drivingAlternatives.addEventListener("click", () => {
   travelMode.value = "driving";
   search();
 });
-locationType.addEventListener("change", () => {
+advanced.addEventListener("change", syncPriorities);
+severity.addEventListener("change", () => { updateLoadControl(); rerank(); });
+sort.addEventListener("change", () => { updateLoadControl(); rerank(); });
+for (const control of [equity, considerLoad]) control.addEventListener("change", rerank);
+for (const control of [limit, ...Object.values(weightInputs)]) {
+  const display = get(control.id + "-value");
+  const update = () => { display.value = control === limit ? control.value : Number(control.value).toFixed(2); };
+  update();
+  control.addEventListener("input", () => { update(); rerank(); });
+}
+function locationChanged() {
+  clearTimeout(locationTimer);
+  clearError();
   invalidateSearch();
+  updateSearchButton();
+  if (searchStarted && !get("search-button").disabled) {
+    locationTimer = setTimeout(() => search({focus: false}), 700);
+  }
+}
+locationType.addEventListener("change", () => {
   query.value = "";
   state.value = "";
   switchLocation();
+  locationChanged();
 });
-severity.addEventListener("change", () => {
-  updateLoadControl();
-  if (displayedRouting !== undefined) renderSearch(displayedRouting);
+for (const input of [query, state, latitude, longitude]) input.addEventListener("input", locationChanged);
+
+const sidebarToggle = get("sidebar-toggle");
+const wide = window.matchMedia("(min-width: 961px)");
+function setSidebar(open) {
+  sidebarToggle.setAttribute("aria-expanded", String(open));
+  get("settings-sidebar").inert = !open;
+}
+setSidebar(wide.matches);
+wide.addEventListener("change", () => setSidebar(wide.matches));
+sidebarToggle.addEventListener("click", () => setSidebar(sidebarToggle.getAttribute("aria-expanded") !== "true"));
+function closeSidebar() { setSidebar(false); sidebarToggle.focus(); }
+get("sidebar-close").addEventListener("click", closeSidebar);
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape" && !wide.matches && sidebarToggle.getAttribute("aria-expanded") === "true") closeSidebar();
 });
-for (const control of [sort, limit, considerLoad]) {
-  control.addEventListener("change", () => {
-    if (control === sort) updateLoadControl();
-    if (displayedRouting !== undefined) renderSearch(displayedRouting);
-  });
-}
-for (const input of [query, state, latitude, longitude]) {
-  input.addEventListener("input", () => {
-    clearError();
-    invalidateSearch();
-  });
-}
+buildPriorityControls();
 
 async function start() {
   try {
-    const response = await fetch(new URL("./data.json", import.meta.url), { cache: "no-cache" });
-    if (!response.ok) throw new Error("The facility snapshot could not be loaded.");
+    const [response, classic] = await Promise.all(["./data.json", "./classic-data.json"].map(file =>
+      fetch(new URL(file, import.meta.url), {cache: "no-cache"})));
+    if (!response.ok || !classic.ok) throw new Error("The facility snapshot could not be loaded.");
     const bytes = await response.arrayBuffer();
     const digest = await crypto.subtle.digest("SHA-256", bytes);
     snapshotSha256 = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
     data = JSON.parse(new TextDecoder().decode(bytes));
     if (!Array.isArray(data.services) || !Array.isArray(data.facilities)) throw new Error("The snapshot is incomplete.");
-    service.replaceChildren(new Option("Choose a service", ""), ...data.services.map(item => new Option(item.label, item.label)));
+    attachClassicData(data, await classic.json(), snapshotSha256);
+    updateGroups();
     get("snapshot-count").textContent = `${formatNumber.format(data.facilities.length)} facility records`;
     const published = new Date(data.publishedAt);
     get("snapshot-date").textContent = Number.isNaN(published.getTime())
@@ -451,6 +493,7 @@ async function start() {
     if (href) get("source-link").href = href;
     get("search-fields").disabled = false;
     switchLocation();
+    updateSearchButton();
     updateLoadControl();
   } catch {
     get("snapshot-count").textContent = "Facility data unavailable";

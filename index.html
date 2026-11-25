@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Compare health facilities in India by estimated travel time and published evidence for the service you need.">
+  <meta name="description" content="Compare health facilities in India by travel time, facility fit and published evidence for the service you need.">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>Facility Finder</title>
   <link rel="stylesheet" href="./styles.css">
@@ -11,115 +11,167 @@
 </head>
 <body>
   <a class="skip-link" href="#finder">Skip to care search</a>
-  <header class="site-header">
-    <div class="header-inner">
-      <a class="brand" href="./">
-        <span class="brand-mark" aria-hidden="true"></span>
-        Facility Finder
-      </a>
-      <a class="header-link" href="#methods">Data &amp; methods <span aria-hidden="true">↘</span></a>
-    </div>
-  </header>
-
-  <main class="page" id="finder">
-    <section class="intro" aria-labelledby="page-title">
-      <div>
-        <h1 id="page-title">Find the right care</h1>
-        <p>Compare facilities in India by travel time and evidence for the service you need.</p>
-      </div>
-      <aside class="snapshot" aria-label="Data coverage">
-        <p class="snapshot-label">Published facility data</p>
-        <p class="snapshot-count" id="snapshot-count">Loading facilities…</p>
-        <p class="snapshot-date" id="snapshot-date"></p>
-        <p class="snapshot-date" id="evidence-date"></p>
-      </aside>
+  <button class="sidebar-button" id="sidebar-toggle" type="button" aria-controls="settings-sidebar" aria-expanded="true" aria-label="Open data and result settings">☰</button>
+  <aside class="settings-sidebar" id="settings-sidebar" aria-label="Data and result settings">
+    <button class="sidebar-button" id="sidebar-close" type="button" aria-label="Close data and result settings" aria-controls="settings-sidebar">«</button>
+    <section class="snapshot" aria-labelledby="data-title">
+      <h2 id="data-title">Data</h2>
+      <p class="setting-label">Published facility snapshot</p>
+      <p id="snapshot-count">Loading facilities…</p>
+      <p class="caption" id="snapshot-date"></p>
+      <p class="caption" id="evidence-date"></p>
+      <a class="report-link" href="./methods.html">Read the data and methods report</a>
     </section>
+    <section aria-labelledby="sidebar-results-title">
+      <h2 id="sidebar-results-title">Results</h2>
+      <div class="range-field">
+        <label for="limit">Results to show</label><output id="limit-value" for="limit">5</output>
+        <input type="range" id="limit" min="1" max="10" step="1" value="5">
+      </div>
+      <details class="expander weight-settings">
+        <summary>Fit-score weights</summary>
+        <p class="caption">Adjust how much each part of the facility record contributes to the Fit score.</p>
+        <div class="range-field">
+          <label for="weight-capability">Equipment &amp; staff match</label><output id="weight-capability-value" for="weight-capability">0.40</output>
+          <input type="range" id="weight-capability" min="0" max="1" step="0.05" value="0.40">
+        </div>
+        <div class="range-field">
+          <label for="weight-availability">Availability (24x7)</label><output id="weight-availability-value" for="weight-availability">0.25</output>
+          <input type="range" id="weight-availability" min="0" max="1" step="0.05" value="0.25">
+        </div>
+        <div class="range-field">
+          <label for="weight-quality">Accreditation &amp; rating</label><output id="weight-quality-value" for="weight-quality">0.20</output>
+          <input type="range" id="weight-quality" min="0" max="1" step="0.05" value="0.20">
+        </div>
+        <div class="range-field">
+          <label for="weight-confidence">Data freshness</label><output id="weight-confidence-value" for="weight-confidence">0.15</output>
+          <input type="range" id="weight-confidence" min="0" max="1" step="0.05" value="0.15">
+        </div>
+      </details>
+    </section>
+  </aside>
 
-    <div class="finder-layout">
-      <section class="panel search-panel" aria-labelledby="search-title">
-        <h2 id="search-title">Search for care</h2>
-        <form id="finder-form" novalidate>
-          <fieldset id="search-fields" disabled>
+  <main class="page" id="finder" tabindex="-1">
+    <header class="intro">
+      <div class="title-row">
+        <h1><span aria-hidden="true">🏥</span> Facility Finder</h1>
+        <a href="./methods.html">Data and methods</a>
+      </div>
+      <p class="caption">Choose a service and location to compare mapped options, fit scores, and available source evidence.</p>
+      <p class="availability-note">Beds are a rough measure of facility size. Call the facility to confirm the service, branch, and current availability before traveling.</p>
+    </header>
+
+    <form id="finder-form" novalidate>
+      <fieldset id="search-fields" disabled>
+        <div class="search-columns">
+          <section class="panel search-panel" aria-labelledby="search-title">
+            <h2 id="search-title">1. Service</h2>
+            <fieldset class="browse-by">
+              <legend>Browse services by</legend>
+              <label><input type="radio" name="browse-by" id="browse-specialty" value="specialty" checked> Specialty</label>
+              <label><input type="radio" name="browse-by" id="browse-area" value="area"> Afflicted body area</label>
+            </fieldset>
+            <div class="field">
+              <label for="service-group" id="service-group-label">Specialty</label>
+              <select id="service-group"><option value="">All specialties</option></select>
+            </div>
             <div class="field">
               <label for="service">Service</label>
-              <select id="service" name="service" required aria-describedby="search-error">
-                <option value="">Loading services…</option>
+              <select id="service" name="service" required aria-describedby="search-error"><option value="">Loading services…</option></select>
+            </div>
+            <p id="service-meta" class="caption"></p>
+          </section>
+          <section class="panel search-panel" aria-labelledby="location-title">
+            <h2 id="location-title">2. Location</h2>
+            <div class="field">
+              <label for="location-type">Location type</label>
+              <select id="location-type" name="location-type">
+                <option value="pin">PIN code</option><option value="city">City</option>
+                <option value="district">District</option><option value="coordinates">Coordinates (lat/lon)</option>
               </select>
             </div>
-
-            <div class="fields-2">
-              <div class="field">
-                <label for="location-type">Location type</label>
-                <select id="location-type" name="location-type">
-                  <option value="pin">PIN code</option>
-                  <option value="city">City</option>
-                  <option value="district">District</option>
-                  <option value="coordinates">Coordinates</option>
-                </select>
-              </div>
-
-              <div class="field">
-                <label for="severity">Urgency</label>
-                <select id="severity" name="severity">
-                  <option value="routine">Routine</option>
-                  <option value="urgent">Urgent</option>
-                  <option value="emergency">Emergency</option>
-                </select>
-              </div>
-            </div>
-
             <div class="field" id="query-field">
               <label for="query" id="query-label">PIN code</label>
-              <input id="query" name="query" inputmode="numeric" placeholder="e.g. 302004" maxlength="6" autocomplete="off" aria-describedby="search-error">
+              <input id="query" name="query" inputmode="numeric" placeholder="e.g. 411001" maxlength="6" autocomplete="off" aria-describedby="search-error">
             </div>
-
             <div class="field" id="state-field" hidden>
-              <label for="state">State <span class="optional">optional</span></label>
-              <input id="state" name="state" placeholder="e.g. Rajasthan" autocomplete="off">
+              <label for="state">State (optional, to disambiguate)</label>
+              <input id="state" name="state" placeholder="e.g. Maharashtra" autocomplete="off">
             </div>
-
             <div class="fields-2" id="coordinate-fields" hidden>
-              <div class="field">
-                <label for="latitude">Latitude</label>
-                <input id="latitude" name="latitude" inputmode="decimal" placeholder="e.g. 31.833" autocomplete="off" aria-describedby="search-error">
-              </div>
-              <div class="field">
-                <label for="longitude">Longitude</label>
-                <input id="longitude" name="longitude" inputmode="decimal" placeholder="e.g. 77.018" autocomplete="off" aria-describedby="search-error">
-              </div>
+              <div class="field"><label for="latitude">Latitude</label><input id="latitude" name="latitude" inputmode="decimal" placeholder="18.5204" autocomplete="off" aria-describedby="search-error"></div>
+              <div class="field"><label for="longitude">Longitude</label><input id="longitude" name="longitude" inputmode="decimal" placeholder="73.8567" autocomplete="off" aria-describedby="search-error"></div>
             </div>
+          </section>
+        </div>
 
+        <section class="panel options-panel" aria-labelledby="options-title">
+          <h2 id="options-title">3. Options</h2>
+          <div class="fields-2">
+            <div class="field">
+              <label for="severity">How urgent is this need?</label>
+              <select id="severity" name="severity"><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></select>
+            </div>
             <div class="field">
               <label for="travel-mode">Travel mode</label>
               <select id="travel-mode" name="travelMode">
-                <option value="driving" selected>Driving</option>
-                <option value="walking">Walking</option>
-                <option value="cycling">Cycling</option>
-                <option value="public_transport">Public transport</option>
+                <option value="driving" selected>Driving</option><option value="walking">Walking</option>
+                <option value="cycling">Cycling</option><option value="public_transport">Public transport</option>
               </select>
             </div>
-
-            <div class="load-control">
-              <label class="toggle-label" for="projected-load">
-                <input class="toggle" id="projected-load" name="projected-load" type="checkbox" role="switch" autocomplete="off" aria-describedby="load-help">
-                <span class="toggle-track" aria-hidden="true"></span>
-                <span>Balance by projected caseload</span>
-              </label>
-              <p id="load-help">Turn on to compare monthly caseload and throughput at nearby facilities for routine care.</p>
-            </div>
-            <p class="field-error" id="search-error" role="alert" hidden></p>
-            <p class="route-privacy" id="route-privacy">A search sends your service, travel mode and starting coordinates to our routing server. TravelTime receives the travel mode and the coordinates of the origin and candidate facilities.</p>
-            <button class="button button-primary" id="search-button" type="submit" aria-describedby="route-privacy">Find facilities <span aria-hidden="true">→</span></button>
-          </fieldset>
-        </form>
-      </section>
-
-      <section class="panel map-panel" aria-labelledby="map-title">
-        <div class="map-header">
-          <div>
-            <h2 id="map-title">Facility map</h2>
-            <p id="map-context">India</p>
           </div>
+          <div class="option-pair">
+            <div>
+              <label class="toggle-label"><input class="toggle" id="projected-load" name="projected-load" type="checkbox" role="switch" autocomplete="off" aria-describedby="load-help"><span class="toggle-track" aria-hidden="true"></span>Consider projected load</label>
+              <p id="load-help" class="caption">Compare published monthly caseload and throughput for nearby routine-care options.</p>
+            </div>
+            <label class="toggle-label"><input class="toggle" id="use-traveltime" type="checkbox" role="switch" checked aria-describedby="route-privacy"><span class="toggle-track" aria-hidden="true"></span>Use TravelTime estimates</label>
+          </div>
+          <label class="toggle-label"><input class="toggle" id="advanced-options" type="checkbox" role="switch" aria-controls="priority-controls"><span class="toggle-track" aria-hidden="true"></span>Advanced options</label>
+          <section id="priority-controls" aria-labelledby="priority-title" hidden>
+            <h3 id="priority-title">My priorities</h3>
+            <p class="caption">Choose the criteria that matter to you and put them in order. Select Ranked criteria under Sort by to apply them.</p>
+            <div id="priority-list"></div>
+            <p class="caption" id="priority-summary" role="status"></p>
+          </section>
+          <div class="equity-control">
+            <label class="toggle-label"><input class="toggle" id="consider-equity" type="checkbox" role="switch" aria-describedby="equity-help"><span class="toggle-track" aria-hidden="true"></span>Consider equity score</label>
+            <details class="equity-explanation"><summary>What’s that?</summary><p>Comparable patient-reported respect and clinical outcomes can help distinguish similar facilities for routine care.</p></details>
+          </div>
+          <p id="equity-help" class="caption"></p>
+        </section>
+        <p class="field-error" id="search-error" role="alert" hidden></p>
+        <button class="button button-primary" id="search-button" type="submit" aria-describedby="route-privacy">Find facilities</button>
+        <p class="caption" id="route-privacy">With TravelTime on, your service, travel mode and starting coordinates go to our routing server. TravelTime receives the travel mode and the coordinates of the origin and candidate facilities.</p>
+      </fieldset>
+    </form>
+
+    <div id="finder-output" class="finder-output">
+      <section class="results-panel" id="results" aria-labelledby="results-title">
+        <div class="results-header">
+          <h2 id="results-title" tabindex="-1">Facility options</h2>
+          <div id="results-controls" class="field results-controls" hidden>
+            <label for="sort">Sort by</label>
+            <select id="sort">
+              <option value="recommended">Recommended</option><option id="travel-sort" value="distance">Fastest drive</option>
+              <option value="straightLine" id="geographic-sort">Distance (nearest first)</option>
+              <option value="fit">Fit (highest first)</option><option value="beds">Beds (most first)</option>
+              <option value="occupancy">Occupancy (lowest first)</option><option id="sort-priorities" value="priorities" hidden>Ranked criteria (best match first)</option>
+              <option value="confidence">Service confidence</option><option value="name">Name</option>
+            </select>
+          </div>
+        </div>
+        <p id="search-context" class="caption" role="status">Choose a service and enter a location to see options.</p>
+        <p id="route-status" class="load-status" role="status" hidden></p>
+        <p id="sort-status" class="caption" role="status" hidden></p>
+        <button id="driving-alternatives" class="button-text" type="button" hidden>Check driving alternatives</button>
+        <p id="load-status" class="load-status" role="status" hidden></p>
+        <p id="equity-status" class="load-status" role="status" hidden></p>
+        <div id="result-list" class="result-list"></div>
+      </section>
+      <section class="map-panel" aria-labelledby="map-title">
+        <div class="map-header">
+          <div><h2 id="map-title" tabindex="-1">Map</h2><p id="map-context" class="caption">India</p></div>
           <button class="button button-subtle" id="street-toggle" type="button" aria-pressed="false" aria-describedby="map-privacy">Use street map</button>
         </div>
         <div class="map-stage" id="map-stage">
@@ -128,73 +180,30 @@
             <div id="local-markers" class="local-markers" aria-label="Map pins"></div>
           </div>
           <div id="street-map" class="street-map" aria-label="Interactive street map" hidden></div>
-          <span class="map-compass" aria-hidden="true">N<br><span>↑</span></span>
         </div>
         <p class="map-selection" id="map-selection" role="status" hidden></p>
-        <div class="map-footer">
-          <span><span class="legend-dot legend-origin" aria-hidden="true"></span>Your location</span>
-          <span><span class="legend-dot legend-facility" aria-hidden="true"></span>Facility rank</span>
-        </div>
-        <p class="map-attribution" id="map-privacy">The optional street map loads tiles from OpenStreetMap.</p>
-      </section>
-
-      <section class="results-panel" id="results" aria-labelledby="results-title">
-        <div class="results-header">
-          <div>
-            <h2 id="results-title" tabindex="-1">Facility options</h2>
-            <p id="search-context" role="status">Choose a service and enter a location to see options.</p>
-          </div>
-          <div id="results-controls" class="results-controls" hidden>
-            <div class="field">
-              <label for="sort">Sort by</label>
-              <select id="sort">
-                <option value="recommended">Recommended</option>
-                <option value="distance" id="travel-sort">Fastest drive</option>
-                <option value="confidence">Service confidence</option>
-                <option value="beds">Beds</option>
-                <option value="name">Name</option>
-              </select>
-            </div>
-            <div class="field">
-              <label for="limit">Show</label>
-              <select id="limit">
-                <option value="5">5</option>
-                <option value="10">10</option>
-              </select>
-            </div>
-          </div>
-        </div>
-        <p id="route-status" class="load-status" role="status" hidden></p>
-        <button id="driving-alternatives" class="button-text" type="button" hidden>Check driving alternatives</button>
-        <p id="load-status" class="load-status" role="status" hidden></p>
-        <div id="result-list" class="result-list"></div>
+        <p class="caption map-instructions">Click a pin for address, phone, hours and directions. Red marks your location. Numbered blue pins follow the results.</p>
+        <p class="caption" id="map-privacy">Local map labels mark <a href="https://www.data.gov.in/resource/all-india-pincode-directory-till-last-month">India Post offices</a>. The optional street map loads tiles from OpenStreetMap.</p>
+        <details class="expander" id="contacts" hidden><summary>View all facility contact details</summary><div id="contact-table" class="table-scroll"></div></details>
       </section>
     </div>
-
-    <section id="methods" class="panel methods" aria-labelledby="methods-title">
-      <h2 id="methods-title">Data &amp; methods</h2>
-      <div class="methods-grid">
-        <div>
-          <h3>Recommended ranking</h3>
-          <p>TravelTime estimates trips of up to three hours on a typical weekday morning for your chosen travel mode. Recommended combines those minutes with penalties for service match and evidence confidence. If the routing service is unavailable, results use straight-line distance.</p>
-        </div>
-        <div>
-          <h3>Projected load</h3>
-          <p>Load balancing is off by default. Turn it on to compare nearby branches with similar evidence for the same service. The calculation gives equal weight to extra travel and workload pressure, using monthly caseload and modeled throughput. It can change which branch ranks first.</p>
-        </div>
-        <div>
-          <h3>Published snapshot</h3>
-          <p>Service evidence and reported or estimated bed counts come from the dated facility release. Call the branch to confirm current availability before traveling.</p>
-        </div>
-      </div>
+    <details id="methods" class="expander methods">
+      <summary>How this prototype decides</summary>
+      <ul>
+        <li>Recommended combines travel time with service match and confidence in the evidence for the exact branch. TravelTime estimates trips of up to three hours on a typical weekday morning in your chosen mode. If routing is unavailable, results label the straight-line distance.</li>
+        <li>Fit scores use the service match and facility records under your chosen weights. Ranked criteria applies your personal priorities in the order you set.</li>
+        <li>Consider projected load compares routine options with comparable service evidence, monthly caseload and modeled throughput. Equity comparisons require paired evidence for the same branch and service.</li>
+      </ul>
+      <p><a href="./methods.html">Read the full data and methods report</a></p>
       <div class="methods-links">
-        <a id="source-link" href="https://github.com/augustchu/datathon-F26">Project data and sources</a>
+        <a id="source-link" href="https://github.com/augustchu/datathon-F26">Facility data and sources</a>
         <a href="https://github.com/augustchu/datathon-F26/blob/main/non-ml/caseload/NETWORK_CASELOAD.md">Load projection methods</a>
+        <a href="https://github.com/augustchu/datathon-F26/blob/ed9d1a87692ce4990d6932cb6fdb337efd38ffd4/load-balancing-pipeline/india_post_pincode_directory.csv">Archived PIN directory</a>
         <a href="https://www.geoboundaries.org/countryDownloads.html">Simplified boundaries by geoBoundaries</a>
         <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>
       </div>
-    </section>
+    </details>
   </main>
-  <noscript><p class="noscript">Facility Finder needs JavaScript to search and display the published data.</p></noscript>
+  <noscript><p>Facility Finder needs JavaScript to search and display the published data.</p></noscript>
 </body>
 </html>
