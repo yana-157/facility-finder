@@ -246,6 +246,8 @@ function renderSearch(routeMatrix) {
   map.show(origin, activeResults, {travelMode: travelMode.value});
 }
 
+class UnroutableOriginError extends Error {}
+
 function fetchRoutes(location, serviceName, selectedMode) {
   const {lat, lon} = location;
   const body = JSON.stringify({origin: {lat, lon}, service: serviceName, travelMode: selectedMode, snapshotSha256});
@@ -256,6 +258,9 @@ function fetchRoutes(location, serviceName, selectedMode) {
     method: "POST", headers: {"Content-Type": "application/json"}, body,
     credentials: "omit", referrerPolicy: "no-referrer", cache: "no-store", signal: AbortSignal.timeout(35000),
   }).then(async response => {
+    if (response.status === 422 && (await response.json()).code === "unroutable_origin") {
+      throw new UnroutableOriginError();
+    }
     if (!response.ok) throw new Error("Routing unavailable.");
     return parseRouteMatrix(await response.json(), data.matches[serviceName], selectedMode);
   }).catch(error => {
@@ -321,7 +326,13 @@ async function search({ focus = true } = {}) {
   let matrix;
   try {
     matrix = await fetchRoutes(origin, service.value, selectedMode);
-  } catch {
+  } catch (cause) {
+    if (version !== searchVersion) return;
+    if (cause instanceof UnroutableOriginError) {
+      context.textContent = `${service.value} near ${origin.label}`;
+      status(routeStatus, `TravelTime couldn’t start a ${TRAVEL_MODES[selectedMode].trip} from this location. Enter coordinates on a nearby road, or search by city or PIN code.`);
+      return;
+    }
     matrix = null;
   }
   if (version !== searchVersion) return;
