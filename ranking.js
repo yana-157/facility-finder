@@ -13,6 +13,48 @@ const COLLATOR = new Intl.Collator("en-IN");
 
 export const MAX_EXTRA_KM = 10;
 export const ROUTING_URL = "https://facility-finder-routing.facility-finder-routing.workers.dev/api/routes";
+const ROUTING_CUTOVER_URL = "https://facility-finder-routing.yana-routes.workers.dev/api/routes";
+
+function routeHostMissing(response) {
+  return response.status === 404 || (
+    [409, 530].includes(response.status) && ["1001", "1004", "1016"].includes(response.headers.get("cf-error-type"))
+  );
+}
+
+export function createRoutingFetch(fetcher = globalThis.fetch) {
+  let verifiedSnapshot = null;
+
+  return async function fetchRoutingResponse(options, snapshotSha256) {
+    if (verifiedSnapshot === null) {
+      try {
+        const response = await fetcher(ROUTING_URL, options);
+        if (!routeHostMissing(response) || options.signal?.aborted) return response;
+      } catch (error) {
+        if (!(error instanceof TypeError) || options.signal?.aborted) throw error;
+      }
+    }
+
+    if (verifiedSnapshot === null || verifiedSnapshot !== snapshotSha256) {
+      const origin = new Headers(options.headers).get("Origin");
+      const response = await fetcher(new URL("/", ROUTING_CUTOVER_URL).href, {
+        method: "GET", headers: origin ? {Origin: origin} : undefined, credentials: "omit", redirect: "error",
+        referrerPolicy: "no-referrer", cache: "no-store", signal: options.signal,
+      });
+      const metadata = response.ok ? await response.json().catch(() => null) : null;
+      const modes = Object.keys(TRAVEL_MODES);
+      if (!/^[a-f0-9]{64}$/u.test(snapshotSha256) || metadata?.service !== "Facility Finder travel times" ||
+          metadata.snapshotSha256 !== snapshotSha256 || !Array.isArray(metadata.travelModes) ||
+          metadata.travelModes.length !== modes.length || !modes.every(mode => metadata.travelModes.includes(mode))) {
+        throw new Error("The routing service could not be verified.");
+      }
+      verifiedSnapshot = snapshotSha256;
+    }
+    return fetcher(ROUTING_CUTOVER_URL, options);
+  };
+}
+
+export const fetchRoutingResponse = createRoutingFetch();
+
 export const TRAVEL_MODES = {
   driving: {label: "Driving", trip: "drive", mapsMode: "driving"},
   walking: {label: "Walking", trip: "walk", mapsMode: "walking"},

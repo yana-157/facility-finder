@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {createHash} from "node:crypto";
 import {readFile} from "node:fs/promises";
 import test from "node:test";
-import {attachClassicData, haversineKm, parseRouteMatrix, rankFacilities, resolveOrigin} from "../ranking.js";
+import {attachClassicData, createRoutingFetch, haversineKm, parseRouteMatrix, rankFacilities, resolveOrigin} from "../ranking.js";
 
 const origin = {lat: 18.52, lon: 73.85};
 
@@ -317,4 +317,125 @@ test("uses labelled approximate centroids and rejects ambiguous or invalid origi
   data.facilities.push({...data.facilities[0], state: "Other state"});
   assert.throws(() => resolveOrigin(data, {type: "city", query: "Pune"}), /state to distinguish/);
   assert.equal(resolveOrigin(data, {type: "city", query: "Pune", state: "Maharashtra"}).label, "Pune, Maharashtra");
+});
+
+const oldRoute = "https://facility-finder-routing.facility-finder-routing.workers.dev/api/routes";
+const newRouter = "https://facility-finder-routing.yana-routes.workers.dev/";
+const newRoute = newRouter + "api/routes";
+const routingSnapshot = "a".repeat(64);
+const routerMetadata = {
+  service: "Facility Finder travel times",
+  snapshotSha256: routingSnapshot,
+  travelModes: ["driving", "walking", "cycling", "public_transport"],
+};
+
+test("routing keeps the current host for working requests", async () => {
+  const options = {method: "POST", body: "{}", signal: new AbortController().signal};
+  const response = new Response("{}", {status: 200});
+  const fetchRoute = createRoutingFetch(async (url, init) => {
+    assert.equal(url, oldRoute);
+    assert.equal(init, options);
+    return response;
+  });
+  assert.equal(await fetchRoute(options, routingSnapshot), response);
+});
+
+test("routing tries the new host for DNS or missing route failures and keeps that host after success", async () => {
+  for (const missing of [
+    new TypeError("network request failed"),
+    new Response(null, {status: 404}),
+    new Response(null, {status: 409, headers: {"cf-error-type": "1001"}}),
+    new Response(null, {status: 530, headers: {"cf-error-type": "1016"}}),
+  ]) {
+    const origin = "https://yana-157.github.io";
+    const options = {method: "POST", headers: {Origin: origin, "Content-Type": "application/json"},
+      body: "{}", signal: new AbortController().signal};
+    const calls = [];
+    const fetchRoute = createRoutingFetch(async (url, init) => {
+      calls.push(url);
+      if (url === newRouter) {
+        assert.deepEqual(init, {method: "GET", headers: {Origin: origin}, credentials: "omit", redirect: "error",
+          referrerPolicy: "no-referrer", cache: "no-store", signal: options.signal});
+        return Response.json(routerMetadata);
+      }
+      assert.equal(init, options);
+      if (url === oldRoute) {
+        if (missing instanceof Error) throw missing;
+        return missing;
+      }
+      return new Response("{}", {status: 200});
+    });
+    assert.equal((await fetchRoute(options, routingSnapshot)).status, 200);
+    assert.equal((await fetchRoute(options, routingSnapshot)).status, 200);
+    assert.deepEqual(calls, [oldRoute, newRouter, newRoute, newRoute]);
+  }
+});
+
+test("routing sends no search to a replacement host with different metadata", async () => {
+  for (const metadata of [
+    {...routerMetadata, service: "Unknown service"},
+    {...routerMetadata, snapshotSha256: "b".repeat(64)},
+    {...routerMetadata, travelModes: ["driving", "walking", "cycling", "driving"]},
+    null,
+  ]) {
+    const calls = [];
+    const fetchRoute = createRoutingFetch(async (url, init) => {
+      calls.push([url, init.method]);
+      if (url === oldRoute) return new Response(null, {status: 404});
+      assert.equal(url, newRouter);
+      return metadata ? Response.json(metadata) : new Response("Unavailable", {status: 503});
+    });
+    await assert.rejects(fetchRoute({method: "POST", body: "search"}, routingSnapshot), /could not be verified/);
+    assert.deepEqual(calls, [[oldRoute, "POST"], [newRouter, "GET"]]);
+  }
+});
+
+test("routing preserves origin, rate-limit, and provider failures", async () => {
+  for (const status of [409, 422, 429, 500, 502, 503, 530]) {
+    const response = new Response(JSON.stringify({code: "existing_error"}), {status});
+    const fetchRoute = createRoutingFetch(async url => {
+      assert.equal(url, oldRoute);
+      return response;
+    });
+    assert.equal(await fetchRoute({method: "POST"}, routingSnapshot), response);
+    assert.equal((await response.json()).code, "existing_error");
+  }
+});
+
+test("routing stays on the verified replacement even if it has a provider failure", async () => {
+  const calls = [];
+  const fetchRoute = createRoutingFetch(async url => {
+    calls.push(url);
+    if (url === oldRoute) return new Response(null, {status: 404});
+    if (url === newRouter) return Response.json(routerMetadata);
+    return new Response(null, {status: 502});
+  });
+  assert.equal((await fetchRoute({method: "POST"}, routingSnapshot)).status, 502);
+  assert.equal((await fetchRoute({method: "POST"}, routingSnapshot)).status, 502);
+  assert.deepEqual(calls, [oldRoute, newRouter, newRoute, newRoute]);
+});
+
+test("the migration keeps the total time limit and preserves requests already in flight", async () => {
+  const aborted = new AbortController();
+  aborted.abort();
+  const fetchAborted = createRoutingFetch(async url => {
+    assert.equal(url, oldRoute);
+    throw aborted.signal.reason;
+  });
+  await assert.rejects(fetchAborted({signal: aborted.signal}, routingSnapshot), {name: "AbortError"});
+
+  const firstResponse = Promise.withResolvers();
+  const requests = [];
+  const fetchRoute = createRoutingFetch(async (url, {body}) => {
+    requests.push([url, body]);
+    if (body === "first") return firstResponse.promise;
+    if (url === oldRoute) throw new TypeError("host moved");
+    if (url === newRouter) return Response.json(routerMetadata);
+    return new Response(body);
+  });
+  const first = fetchRoute({body: "first"}, routingSnapshot);
+  assert.equal(await (await fetchRoute({body: "second"}, routingSnapshot)).text(), "second");
+  firstResponse.resolve(new Response("first"));
+  assert.equal(await (await first).text(), "first");
+  assert.deepEqual(requests, [[oldRoute, "first"], [oldRoute, "second"], [newRouter, undefined], [newRoute, "second"]]);
 });
