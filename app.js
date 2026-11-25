@@ -1,6 +1,6 @@
 import { attachClassicData, parseRouteMatrix, resolveOrigin, rankFacilities, ROUTING_URL, TRAVEL_MODES } from "./ranking.js";
-import { facilityMap } from "./map.js?v=b9c57a7a";
-import { resultCard, contactsTable } from "./results.js?v=31500d2a";
+import { facilityMap } from "./map.js?v=d62ad5f9";
+import { resultCard, contactsTable } from "./results.js?v=8104d949";
 
 const get = id => document.getElementById(id);
 const form = get("finder-form");
@@ -96,10 +96,8 @@ function scrollTo(node) {
 }
 
 const map = facilityMap({
-  stage: get("map-stage"), canvas: get("map-canvas"), markerLayer: get("local-markers"),
-  local: get("local-map"), street: get("street-map"), button: get("street-toggle"),
+  street: get("street-map"), feedback: get("map-status"), retry: get("map-retry"),
   onSelect: index => focusResult(index),
-  onUnavailable: message => status(mapSelection, message),
 });
 
 function focusResult(index, fromCard = false) {

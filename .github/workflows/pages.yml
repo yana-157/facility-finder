@@ -32,7 +32,7 @@ jobs:
         run: |
           mkdir _site
           cp -R fonts _site/
-          cp index.html methods.html styles.css report.css app.js ranking.js results.js map.js boundaries.json map-places.json data.json classic-data.json _site/
+          cp index.html methods.html styles.css report.css app.js ranking.js results.js map.js data.json classic-data.json _site/
       - name: Read the approved Databricks snapshot
         if: ${{ vars.DATABRICKS_PAGES_SNAPSHOT != '' || inputs.sync_databricks }}
         env:

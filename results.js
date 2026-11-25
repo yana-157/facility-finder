@@ -91,14 +91,14 @@ function bedsOf(facility) {
   const source = text(facility.capacitySource);
   const provenance = capacityLabels[status] || status.replaceAll("_", " ");
   if (!Number.isFinite(value) || value <= 0 || ["review_unresolved", "missing"].includes(status)) {
-    return { label: "Beds", value: "Unavailable", detail: provenance || "No published bed count" };
+    return { label: "Capacity (beds)", value: "Unavailable", detail: "Capacity unavailable. " + (provenance || "No published capacity figure.") };
   }
   const estimate = /estimat|model|predict/i.test(status);
   const description = [provenance, source && source !== "FDR" ? source.replaceAll("_", " ") : ""].filter(Boolean).join(" · ");
   const range = estimate && Number.isFinite(facility.bedsLow) && Number.isFinite(facility.bedsHigh)
     ? `. Published prediction range ${number.format(facility.bedsLow)}–${number.format(facility.bedsHigh)} beds` : "";
   return {
-    label: estimate ? "Estimated beds" : "Reported beds", value: number.format(value),
+    label: estimate ? "Estimated capacity (beds)" : "Reported capacity (beds)", value: number.format(value),
     detail: `${estimate ? "Estimated" : "Reported"} capacity of ${number.format(value)} beds${description ? " · " + description : ""}${range}.`,
   };
 }
@@ -180,7 +180,7 @@ function reasons(result, options) {
     if (missing.length) caveats.push("The reviewed text does not document " + missing.join(", ") + ". Ask the branch about these resources.");
   }
   if (options.serviceInfo?.urgent && facility.open24h !== true) caveats.push("Round-the-clock service at this branch is unconfirmed.");
-  if (!Number.isFinite(facility.occupancy)) caveats.push("Current occupancy and available beds are unknown.");
+  if (!Number.isFinite(facility.occupancy)) caveats.push("Current occupancy and available capacity are unknown.");
   if (facility.lastVerified) caveats.push("Branch record last verified " + facility.lastVerified + ".");
   else caveats.push("The branch record has no verification date.");
   if (!mode) caveats.push("The routing service did not supply a journey time. Distance is measured in a straight line.");

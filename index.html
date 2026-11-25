@@ -7,8 +7,8 @@
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>Facility Finder</title>
   <link rel="stylesheet" href="./fonts/roboto.css">
-  <link rel="stylesheet" href="./styles.css?v=8681bd7e">
-  <script type="module" src="./app.js?v=50927b2b"></script>
+  <link rel="stylesheet" href="./styles.css?v=15907c1c">
+  <script type="module" src="./app.js?v=cdeb1a1c"></script>
 </head>
 <body>
   <a class="skip-link" href="#finder">Skip to care search</a>
@@ -156,7 +156,7 @@
             <select id="sort">
               <option value="recommended">Recommended</option><option id="travel-sort" value="distance">Fastest drive</option>
               <option value="straightLine" id="geographic-sort">Distance (nearest first)</option>
-              <option value="fit">Fit (highest first)</option><option value="beds">Beds (most first)</option>
+              <option value="fit">Fit (highest first)</option><option value="beds">Capacity (most beds first)</option>
               <option value="occupancy">Occupancy (lowest first)</option><option id="sort-priorities" value="priorities" hidden>Ranked criteria (best match first)</option>
               <option value="confidence">Service confidence</option><option value="name">Name</option>
             </select>
@@ -173,20 +173,14 @@
         <div id="result-list" class="result-list"></div>
       </section>
       <section class="map-panel" aria-labelledby="map-title">
-        <div class="map-header">
-          <div><h2 id="map-title" tabindex="-1">Map</h2><p id="map-context" class="caption">India</p></div>
-          <button class="button button-subtle" id="street-toggle" type="button" aria-pressed="false" aria-describedby="map-privacy">Use street map</button>
-        </div>
+        <h2 id="map-title" tabindex="-1">Map</h2>
+        <p id="map-context" class="caption">India</p>
+        <div class="map-feedback"><span id="map-status" role="status"></span> <button id="map-retry" class="button-text" type="button" hidden>Retry map</button></div>
         <div class="map-stage" id="map-stage">
-          <div id="local-map" class="local-map">
-            <canvas id="map-canvas" aria-hidden="true"></canvas>
-            <div id="local-markers" class="local-markers" aria-label="Map pins"></div>
-          </div>
-          <div id="street-map" class="street-map" aria-label="Interactive street map" hidden></div>
+          <div id="street-map" class="street-map" role="region" aria-label="Interactive street map"></div>
         </div>
         <p class="map-selection" id="map-selection" role="status" hidden></p>
         <p class="caption map-instructions">Click a pin for address, phone, hours and directions. Red marks your location. Numbered blue pins follow the results.</p>
-        <p class="caption" id="map-privacy">Local map labels mark <a href="https://www.data.gov.in/resource/all-india-pincode-directory-till-last-month">India Post offices</a>. The optional street map loads tiles from OpenStreetMap.</p>
         <details class="expander" id="contacts" hidden><summary>View all facility contact details</summary><div id="contact-table" class="table-scroll"></div></details>
       </section>
     </div>
@@ -201,9 +195,6 @@
       <div class="methods-links">
         <a id="source-link" href="https://github.com/augustchu/datathon-F26">Facility data and sources</a>
         <a href="https://github.com/augustchu/datathon-F26/blob/main/non-ml/caseload/NETWORK_CASELOAD.md">Load projection methods</a>
-        <a href="https://github.com/augustchu/datathon-F26/blob/ed9d1a87692ce4990d6932cb6fdb337efd38ffd4/load-balancing-pipeline/india_post_pincode_directory.csv">Archived PIN directory</a>
-        <a href="https://www.geoboundaries.org/countryDownloads.html">Simplified boundaries by geoBoundaries</a>
-        <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>
       </div>
     </details>
   </main>
