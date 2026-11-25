@@ -107,12 +107,6 @@ fieldset { min-inline-size: 0; padding: 0; border: 0; }
 .toggle:disabled + .toggle-track { color: #777b87; border-color: #adb0b8; background: var(--subtle); }
 .toggle:focus-visible + .toggle-track { outline: 3px solid #0068c9; outline-offset: 3px; }
 .toggle-label:has(:disabled) { color: var(--muted); cursor: default; }
-#priority-controls { grid-column: 1 / -1; margin-top: .4rem; }
-#priority-controls legend { margin-bottom: .25rem; font-size: .94rem; font-weight: 600; }
-#priority-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem 1.5rem; margin-block: .65rem; }
-#priority-list > * { min-width: 0; }
-.priority-row { display: flex; gap: .45rem; align-items: center; justify-content: space-between; font-size: .9rem; }
-.priority-row select { width: 4rem; min-height: 2.75rem; padding-inline: .4rem; color: var(--ink); background: var(--surface); border: 1px solid var(--control-edge); border-radius: .2rem; }
 .equity-control { display: flex; flex-wrap: wrap; align-self: start; align-items: baseline; gap: .25rem .7rem; }
 .equity-explanation { font-size: .85rem; }
 .equity-explanation summary { width: fit-content; padding: .48rem 0; color: var(--blue); }
@@ -233,7 +227,7 @@ fieldset { min-inline-size: 0; padding: 0; border: 0; }
 @media (max-width: 34rem) {
   .intro { grid-template-columns: minmax(0, 1fr); }
   .options-footer { grid-template-columns: minmax(0, 1fr); }
-  .weight-grid, #priority-list, .fields-2 { grid-template-columns: minmax(0, 1fr); gap: .65rem; }
+  .weight-grid, .fields-2 { grid-template-columns: minmax(0, 1fr); gap: .65rem; }
   .section-heading { gap: .15rem .5rem; }
   .snapshot { justify-content: start; gap: 0; }
   .snapshot > div { grid-template-columns: 6.3rem auto; }

@@ -14,11 +14,6 @@ const weightInputs = {
   capability: get("weight-capability"), availability: get("weight-availability"),
   quality: get("weight-quality"), freshness: get("weight-confidence"),
 };
-const priorityLabels = {
-  fit: "Facility fit", travel: "Travel (shorter is better)",
-  evidence: "Service evidence", spare: "Spare capacity (lower occupancy)",
-};
-const priorityOrder = [];
 const locationType = get("location-type");
 const severity = get("severity");
 const query = get("query");
@@ -171,7 +166,6 @@ function renderSearch(routeMatrix) {
   const result = rankFacilities(data, {
     service: service.value, origin, severity: severity.value, sort: sort.value,
     considerLoad: considerLoad.checked, limit: Number(limit.value), routeMatrix, fitWeights: weights,
-    priorities: priorityOrder,
   });
   activeResults = result.results;
   const place = origin.label + (origin.approximate ? " (approximate)" : "");
@@ -210,8 +204,6 @@ function renderSearch(routeMatrix) {
   if (sort.value === "straightLine" || (sort.value === "distance" && !routeMatrix)) sortNote = "Ordered by straight-line distance from your starting point.";
   if (count && sort.value === "occupancy" && activeResults.every(item => item.facility.occupancy == null))
     sortNote = "These branches have no recorded occupancy. Ties use the available ranking evidence.";
-  if (count && sort.value === "priorities" && activeResults.every(item => item.priorityScore == null))
-    sortNote = "The available records do not support a score for these priorities. Ties use the available ranking evidence.";
   status(get("sort-status"), sortNote);
   status(originStatus, "");
   if (routeMatrix) {
@@ -418,44 +410,6 @@ function updateGroups() {
   updateServices();
 }
 
-function syncPriorities() {
-  get("priority-controls").hidden = sort.value !== "priorities";
-  for (const key of Object.keys(priorityLabels)) {
-    const order = get("order-" + key);
-    const position = priorityOrder.indexOf(key);
-    const slots = priorityOrder.length + (position === -1 ? 1 : 0);
-    const ranks = Array.from({length: slots}, (_, index) => new Option(String(index + 1), String(index)));
-    order.replaceChildren(new Option("Off", ""), ...ranks);
-    order.value = position === -1 ? "" : String(position);
-  }
-  status(get("priority-summary"), priorityOrder.map((key, index) => `${index + 1}. ${priorityLabels[key]}`).join(" · "));
-  updateComparisonHelp();
-  rerank();
-}
-
-function buildPriorityControls() {
-  for (const [key, text] of Object.entries(priorityLabels)) {
-    const row = element("div", "", "priority-row");
-    const label = element("label", text);
-    const order = element("select");
-    order.id = "order-" + key;
-    label.htmlFor = order.id;
-    order.addEventListener("change", () => {
-      const previous = priorityOrder.indexOf(key);
-      if (previous !== -1) priorityOrder.splice(previous, 1);
-      if (order.value !== "") priorityOrder.splice(Number(order.value), 0, key);
-      if (!priorityOrder.length) {
-        sort.value = "recommended";
-        sort.focus();
-      }
-      syncPriorities();
-    });
-    row.append(label, order);
-    get("priority-list").append(row);
-  }
-  syncPriorities();
-}
-
 form.addEventListener("submit", event => {
   event.preventDefault();
   search();
@@ -474,8 +428,8 @@ get("adjust-fit").addEventListener("click", () => {
 });
 severity.addEventListener("change", () => { updateComparisonHelp(); rerank(); });
 sort.addEventListener("change", () => {
-  if (sort.value === "priorities" && !priorityOrder.length) priorityOrder.push("fit");
-  syncPriorities();
+  updateComparisonHelp();
+  rerank();
 });
 for (const control of [equity, considerLoad]) control.addEventListener("change", rerank);
 for (const control of [limit, ...Object.values(weightInputs)]) {
@@ -507,8 +461,6 @@ locationType.addEventListener("change", () => {
   locationChanged();
 });
 for (const input of [query, state, latitude, longitude]) input.addEventListener("input", locationChanged);
-
-buildPriorityControls();
 
 function openLinkedCitySearch() {
   const params = new URLSearchParams(window.location.search);
