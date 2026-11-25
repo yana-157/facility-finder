@@ -25,8 +25,8 @@
     </header>
 
     <form id="finder-form" novalidate>
-      <fieldset id="search-fields" disabled>
-        <div class="search-columns">
+      <div class="form-layout">
+        <fieldset class="search-columns" id="search-fields" aria-label="Service and location" disabled>
           <section class="search-section" aria-labelledby="search-title">
             <h2 id="search-title">Service</h2>
             <fieldset class="browse-by">
@@ -70,7 +70,7 @@
               </div>
             </div>
           </section>
-        </div>
+        </fieldset>
 
         <section class="options-panel" aria-labelledby="options-title">
           <h2 id="options-title">Options</h2>
@@ -79,7 +79,7 @@
               <div class="fields-2">
                 <div class="field">
                   <label for="severity">How urgent is this need?</label>
-                  <select id="severity" name="severity"><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></select>
+                  <select id="severity" name="severity" disabled><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></select>
                 </div>
                 <div class="field">
                   <label for="travel-mode">Travel mode</label>
@@ -146,10 +146,10 @@
         </section>
         <p class="field-error" id="search-error" role="alert" hidden></p>
         <div class="search-action">
-          <button class="button button-primary" id="search-button" type="submit" aria-describedby="route-privacy">Find facilities</button>
+          <button class="button button-primary" id="search-button" type="submit" aria-describedby="route-privacy" disabled>Find facilities</button>
           <p class="caption" id="route-privacy">A search sends your service, travel mode and starting coordinates to our routing server. TravelTime receives the travel mode and the coordinates of the origin and candidate facilities.</p>
         </div>
-      </fieldset>
+      </div>
     </form>
 
     <div id="finder-output" class="finder-output">

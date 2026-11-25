@@ -8,6 +8,8 @@ const service = get("service");
 const travelMode = get("travel-mode");
 const advanced = get("advanced-options");
 const equity = get("consider-equity");
+const workloadUrgencyText = "Workload comparisons are available for routine, non-time-critical care.";
+const equityUrgencyText = "Equity comparisons are paused for time-critical care.";
 const group = get("service-group");
 const weightInputs = {
   capability: get("weight-capability"), availability: get("weight-availability"),
@@ -142,21 +144,16 @@ function switchLocation() {
   clearError();
 }
 
-function updateLoadControl() {
+function updateComparisonHelp() {
   const serviceInfo = data?.services.find(item => item.label === service.value);
   const routine = serviceInfo && !serviceInfo.urgent && severity.value === "routine";
-  const eligible = routine && sort.value === "recommended";
-  considerLoad.disabled = !eligible;
-  if (!eligible) considerLoad.checked = false;
   let help = "Compare expected monthly workload at nearby facilities in the same fit range.";
-  if (serviceInfo && !routine) help = "Workload comparisons are available for routine, non-time-critical care.";
+  if (serviceInfo && !routine) help = workloadUrgencyText;
   else if (sort.value !== "recommended") help = "Choose Recommended sorting to compare expected workloads.";
   get("load-help").textContent = help;
-  equity.disabled = !routine;
-  if (!routine) equity.checked = false;
   get("equity-help").textContent = routine
     ? "Compare similar facilities using paired patient-reported respect and clinical outcome measures when available."
-    : "Equity comparisons are paused for time-critical care.";
+    : equityUrgencyText;
 }
 
 function clearError() {
@@ -229,14 +226,19 @@ function renderSearch(routeMatrix) {
   get("adjust-fit").hidden = !noQualifyingFit;
   drivingAlternatives.hidden = travelMode.value === "driving" || Boolean(routeMatrix && !noRoutes);
   const loadText = {
+    urgency: workloadUrgencyText,
     sort: "Choose Recommended sorting to compare expected workloads.",
     unavailable: "There are too few comparable workload estimates to change the recommendation.",
     compared: `Compared expected workloads at ${result.comparisonCount} nearby facilities in the same fit range. The first recommendation stayed the same.`,
     changed: `Compared expected workloads at ${result.comparisonCount} nearby facilities in the same fit range. ${activeResults[0]?.facility.name} moved to first.`,
   };
   status(loadStatus, count ? loadText[result.loadStatus] ?? "" : "");
-  status(get("equity-status"), equity.checked && count
-    ? "The published snapshot has no paired evidence on patient-reported respect and clinical outcomes for these facilities. The displayed order uses your selected sort." : "");
+  let equityStatus = "";
+  if (equity.checked && count) {
+    equityStatus = serviceInfo?.urgent || severity.value !== "routine" ? equityUrgencyText
+      : "The published snapshot has no paired evidence on patient-reported respect and clinical outcomes for these facilities. The displayed order uses your selected sort.";
+  }
+  status(get("equity-status"), equityStatus);
   const cardOptions = {service: service.value, serviceInfo, travelMode: travelMode.value, sort: sort.value, origin,
     fitWeights: weights, snapshotDate: data.classifiedAsOf, sourceUrl: data.sourceUrl, projectionSourceUrl: data.projectionSourceUrl,
     onShowMap: index => focusResult(index, true)};
@@ -348,7 +350,7 @@ function selectService() {
   get("service-meta").textContent = [info.specialty, info.area, info.urgent && "Time-critical"].filter(Boolean).join(" · ");
   severity.value = info.urgent ? "urgent" : "routine";
   updateSearchButton();
-  updateLoadControl();
+  updateComparisonHelp();
   if (origin) search({focus: false});
 }
 
@@ -393,7 +395,7 @@ function syncPriorities() {
   }
   status(get("priority-summary"), priorityOrder.length
     ? "Priority order: " + priorityOrder.map(key => priorityLabels[key]).join(" · ") : "");
-  updateLoadControl();
+  updateComparisonHelp();
   rerank();
 }
 
@@ -440,8 +442,8 @@ get("adjust-fit").addEventListener("click", () => {
   weightInputs.capability.focus();
 });
 advanced.addEventListener("change", syncPriorities);
-severity.addEventListener("change", () => { updateLoadControl(); rerank(); });
-sort.addEventListener("change", () => { updateLoadControl(); rerank(); });
+severity.addEventListener("change", () => { updateComparisonHelp(); rerank(); });
+sort.addEventListener("change", () => { updateComparisonHelp(); rerank(); });
 for (const control of [equity, considerLoad]) control.addEventListener("change", rerank);
 for (const control of [limit, ...Object.values(weightInputs)]) {
   const display = get(control.id + "-value");
@@ -499,9 +501,10 @@ async function start() {
     const href = safeLink(data.sourceUrl);
     if (href) get("source-link").href = href;
     get("search-fields").disabled = false;
+    severity.disabled = false;
     switchLocation();
     updateSearchButton();
-    updateLoadControl();
+    updateComparisonHelp();
   } catch {
     get("snapshot-count").textContent = "Facility data unavailable";
     markError("The facility snapshot could not be loaded. Refresh this page to retry.", [], false);
