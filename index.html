@@ -14,7 +14,7 @@
   <main class="page" id="finder" tabindex="-1">
     <header class="intro">
       <div class="title-row">
-        <h1><span aria-hidden="true">🏥</span> Facility Finder</h1>
+        <h1>Facility Finder</h1>
         <a href="./methods.html">Data and methods</a>
       </div>
       <ul class="snapshot caption" aria-label="Published facility snapshot">
@@ -27,116 +27,128 @@
     <form id="finder-form" novalidate>
       <fieldset id="search-fields" disabled>
         <div class="search-columns">
-          <section class="panel search-panel" aria-labelledby="search-title">
-            <h2 id="search-title">1. Service</h2>
+          <section class="search-section" aria-labelledby="search-title">
+            <h2 id="search-title">Service</h2>
             <fieldset class="browse-by">
               <legend>Browse services by</legend>
               <label><input type="radio" name="browse-by" id="browse-specialty" value="specialty" checked> Specialty</label>
               <label><input type="radio" name="browse-by" id="browse-area" value="area"> Afflicted body area</label>
             </fieldset>
-            <div class="field">
-              <label for="service-group" id="service-group-label">Specialty</label>
-              <select id="service-group"><option value="">All specialties</option></select>
-            </div>
-            <div class="field">
-              <label for="service">Service</label>
-              <select id="service" name="service" required aria-describedby="search-error"><option value="">Loading services…</option></select>
+            <div class="fields-2">
+              <div class="field">
+                <label for="service-group" id="service-group-label">Specialty</label>
+                <select id="service-group"><option value="">All specialties</option></select>
+              </div>
+              <div class="field">
+                <label for="service">Service</label>
+                <select id="service" name="service" required aria-describedby="search-error"><option value="">Loading services…</option></select>
+              </div>
             </div>
             <p id="service-meta" class="caption"></p>
           </section>
-          <section class="panel search-panel" aria-labelledby="location-title">
-            <h2 id="location-title">2. Location</h2>
-            <div class="field">
-              <label for="location-type">Location type</label>
-              <select id="location-type" name="location-type">
-                <option value="pin">PIN code</option><option value="city">City</option>
-                <option value="district">District</option><option value="coordinates">Coordinates (lat/lon)</option>
-              </select>
-            </div>
-            <div class="field" id="query-field">
-              <label for="query" id="query-label">PIN code</label>
-              <input id="query" name="query" inputmode="numeric" placeholder="e.g. 411001" maxlength="6" autocomplete="off" aria-describedby="search-error">
-            </div>
-            <div class="field" id="state-field" hidden>
-              <label for="state">State (optional, to disambiguate)</label>
-              <input id="state" name="state" placeholder="e.g. Maharashtra" autocomplete="off">
-            </div>
-            <div class="fields-2" id="coordinate-fields" hidden>
-              <div class="field"><label for="latitude">Latitude</label><input id="latitude" name="latitude" inputmode="decimal" placeholder="18.5204" autocomplete="off" aria-describedby="search-error"></div>
-              <div class="field"><label for="longitude">Longitude</label><input id="longitude" name="longitude" inputmode="decimal" placeholder="73.8567" autocomplete="off" aria-describedby="search-error"></div>
+          <section class="search-section" aria-labelledby="location-title">
+            <h2 id="location-title">Location</h2>
+            <div class="fields-2 location-fields">
+              <div class="field">
+                <label for="location-type">Location type</label>
+                <select id="location-type" name="location-type">
+                  <option value="pin">PIN code</option><option value="city">City</option>
+                  <option value="district">District</option><option value="coordinates">Coordinates (lat/lon)</option>
+                </select>
+              </div>
+              <div class="field" id="query-field">
+                <label for="query" id="query-label">PIN code</label>
+                <input id="query" name="query" inputmode="numeric" placeholder="e.g. 411001" maxlength="6" autocomplete="off" aria-describedby="search-error">
+              </div>
+              <div class="field" id="state-field" hidden>
+                <label for="state">State (optional, to disambiguate)</label>
+                <input id="state" name="state" placeholder="e.g. Maharashtra" autocomplete="off">
+              </div>
+              <div class="fields-2" id="coordinate-fields" hidden>
+                <div class="field"><label for="latitude">Latitude</label><input id="latitude" name="latitude" inputmode="decimal" placeholder="18.5204" autocomplete="off" aria-describedby="search-error"></div>
+                <div class="field"><label for="longitude">Longitude</label><input id="longitude" name="longitude" inputmode="decimal" placeholder="73.8567" autocomplete="off" aria-describedby="search-error"></div>
+              </div>
             </div>
           </section>
         </div>
 
-        <section class="panel options-panel" aria-labelledby="options-title">
-          <h2 id="options-title">3. Options</h2>
-          <div class="fields-2">
-            <div class="field">
-              <label for="severity">How urgent is this need?</label>
-              <select id="severity" name="severity"><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></select>
-            </div>
-            <div class="field">
-              <label for="travel-mode">Travel mode</label>
-              <select id="travel-mode" name="travelMode">
-                <option value="driving" selected>Driving</option><option value="walking">Walking</option>
-                <option value="cycling">Cycling</option><option value="public_transport">Public transport</option>
-              </select>
-            </div>
-          </div>
-          <label class="toggle-label"><input class="toggle" id="advanced-options" type="checkbox" role="switch" aria-controls="priority-controls"><span class="toggle-track" aria-hidden="true"></span>Advanced options</label>
-          <section id="priority-controls" aria-labelledby="priority-title" hidden>
-            <h3 id="priority-title">My priorities</h3>
-            <p class="caption">Choose the criteria that matter to you and put them in order. Select Ranked criteria under Sort by to apply them.</p>
-            <div id="priority-list"></div>
-            <p class="caption" id="priority-summary" role="status"></p>
-          </section>
-          <div class="option-pair">
-            <div>
-              <label class="toggle-label"><input class="toggle" id="projected-load" name="projected-load" type="checkbox" role="switch" autocomplete="off" aria-describedby="load-help"><span class="toggle-track" aria-hidden="true"></span>Ease pressure on busy facilities</label>
-              <p id="load-help" class="caption">Compare expected monthly workload at nearby facilities in the same fit range.</p>
-            </div>
-            <div>
-              <div class="equity-control">
-                <label class="toggle-label"><input class="toggle" id="consider-equity" type="checkbox" role="switch" aria-describedby="equity-help"><span class="toggle-track" aria-hidden="true"></span>Consider equity score</label>
-                <details class="equity-explanation"><summary>What’s that?</summary><p>Comparable patient-reported respect and clinical outcomes can help distinguish similar facilities for routine care.</p></details>
-              </div>
-              <p id="equity-help" class="caption"></p>
-            </div>
-          </div>
-          <details class="expander" id="fit-settings">
-            <summary>Results and fit settings</summary>
-            <div class="range-field result-limit">
-              <label for="limit">Results to show</label><output id="limit-value" for="limit">5</output>
-              <input type="range" id="limit" min="1" max="10" step="1" value="5">
-            </div>
-            <fieldset class="fit-weights">
-              <legend>Fit-score weights</legend>
-              <p class="caption">Choose how much each documented part of a facility’s record contributes to its fit score.</p>
-              <div class="weight-grid">
-                <div class="range-field">
-                  <label for="weight-capability">Equipment &amp; staff match</label><output id="weight-capability-value" for="weight-capability">0.40</output>
-                  <input type="range" id="weight-capability" min="0" max="1" step="0.05" value="0.40">
+        <section class="options-panel" aria-labelledby="options-title">
+          <h2 id="options-title">Options</h2>
+          <div class="options-layout">
+            <div class="option-basics">
+              <div class="fields-2">
+                <div class="field">
+                  <label for="severity">How urgent is this need?</label>
+                  <select id="severity" name="severity"><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></select>
                 </div>
-                <div class="range-field">
-                  <label for="weight-availability">Availability (24x7)</label><output id="weight-availability-value" for="weight-availability">0.25</output>
-                  <input type="range" id="weight-availability" min="0" max="1" step="0.05" value="0.25">
-                </div>
-                <div class="range-field">
-                  <label for="weight-quality">Accreditation &amp; rating</label><output id="weight-quality-value" for="weight-quality">0.20</output>
-                  <input type="range" id="weight-quality" min="0" max="1" step="0.05" value="0.20">
-                </div>
-                <div class="range-field">
-                  <label for="weight-confidence">Data freshness</label><output id="weight-confidence-value" for="weight-confidence">0.15</output>
-                  <input type="range" id="weight-confidence" min="0" max="1" step="0.05" value="0.15">
+                <div class="field">
+                  <label for="travel-mode">Travel mode</label>
+                  <select id="travel-mode" name="travelMode">
+                    <option value="driving" selected>Driving</option><option value="walking">Walking</option>
+                    <option value="cycling">Cycling</option><option value="public_transport">Public transport</option>
+                  </select>
                 </div>
               </div>
-            </fieldset>
-            <p id="fit-weight-status" class="caption" role="status" hidden></p>
-          </details>
+              <details class="expander" id="fit-settings">
+                <summary>Results and fit settings</summary>
+                <div class="range-field result-limit">
+                  <label for="limit">Results to show</label><output id="limit-value" for="limit">5</output>
+                  <input type="range" id="limit" min="1" max="10" step="1" value="5">
+                </div>
+                <fieldset class="fit-weights">
+                  <legend>Fit-score weights</legend>
+                  <p class="caption">Choose how much each documented part of a facility’s record contributes to its fit score.</p>
+                  <div class="weight-grid">
+                    <div class="range-field">
+                      <label for="weight-capability">Equipment &amp; staff match</label><output id="weight-capability-value" for="weight-capability">0.40</output>
+                      <input type="range" id="weight-capability" min="0" max="1" step="0.05" value="0.40">
+                    </div>
+                    <div class="range-field">
+                      <label for="weight-availability">Availability (24x7)</label><output id="weight-availability-value" for="weight-availability">0.25</output>
+                      <input type="range" id="weight-availability" min="0" max="1" step="0.05" value="0.25">
+                    </div>
+                    <div class="range-field">
+                      <label for="weight-quality">Accreditation &amp; rating</label><output id="weight-quality-value" for="weight-quality">0.20</output>
+                      <input type="range" id="weight-quality" min="0" max="1" step="0.05" value="0.20">
+                    </div>
+                    <div class="range-field">
+                      <label for="weight-confidence">Data freshness</label><output id="weight-confidence-value" for="weight-confidence">0.15</output>
+                      <input type="range" id="weight-confidence" min="0" max="1" step="0.05" value="0.15">
+                    </div>
+                  </div>
+                </fieldset>
+                <p id="fit-weight-status" class="caption" role="status" hidden></p>
+              </details>
+            </div>
+            <div class="option-preferences">
+              <label class="toggle-label"><input class="toggle" id="advanced-options" type="checkbox" role="switch" aria-controls="priority-controls"><span class="toggle-track" aria-hidden="true"></span>Advanced options</label>
+              <section id="priority-controls" aria-labelledby="priority-title" hidden>
+                <h3 id="priority-title">My priorities</h3>
+                <p class="caption">Choose the criteria that matter to you and put them in order. Select Ranked criteria under Sort by to apply them.</p>
+                <div id="priority-list"></div>
+                <p class="caption" id="priority-summary" role="status"></p>
+              </section>
+              <div class="option-pair">
+                <div>
+                  <label class="toggle-label"><input class="toggle" id="projected-load" name="projected-load" type="checkbox" role="switch" autocomplete="off" aria-describedby="load-help"><span class="toggle-track" aria-hidden="true"></span>Ease pressure on busy facilities</label>
+                  <p id="load-help" class="caption">Compare expected monthly workload at nearby facilities in the same fit range.</p>
+                </div>
+                <div>
+                  <div class="equity-control">
+                    <label class="toggle-label"><input class="toggle" id="consider-equity" type="checkbox" role="switch" aria-describedby="equity-help"><span class="toggle-track" aria-hidden="true"></span>Consider equity score</label>
+                    <details class="equity-explanation"><summary>What’s that?</summary><p>Comparable patient-reported respect and clinical outcomes can help distinguish similar facilities for routine care.</p></details>
+                  </div>
+                  <p id="equity-help" class="caption"></p>
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
         <p class="field-error" id="search-error" role="alert" hidden></p>
-        <button class="button button-primary" id="search-button" type="submit" aria-describedby="route-privacy">Find facilities</button>
-        <p class="caption" id="route-privacy">A search sends your service, travel mode and starting coordinates to our routing server. TravelTime receives the travel mode and the coordinates of the origin and candidate facilities.</p>
+        <div class="search-action">
+          <button class="button button-primary" id="search-button" type="submit" aria-describedby="route-privacy">Find facilities</button>
+          <p class="caption" id="route-privacy">A search sends your service, travel mode and starting coordinates to our routing server. TravelTime receives the travel mode and the coordinates of the origin and candidate facilities.</p>
+        </div>
       </fieldset>
     </form>
 
@@ -144,6 +156,7 @@
       <section class="results-panel" id="results" aria-labelledby="results-title">
         <div class="results-header">
           <h2 id="results-title" tabindex="-1">Facility options</h2>
+          <a class="jump-to-map" href="#map-title">View map</a>
           <div id="results-controls" class="field results-controls" hidden>
             <label for="sort">Sort by</label>
             <select id="sort">
@@ -183,7 +196,7 @@
       </section>
     </div>
     <details id="methods" class="expander methods">
-      <summary>How this prototype decides</summary>
+      <summary>How results are ranked</summary>
       <ul>
         <li>Every sort requires service confidence of at least 25/100 and excludes branches with a documented fit of zero. Recommended also requires a known fit score. It shows scores of 60–100 first, then 55 to under 60, 50 to under 55, and positive scores under 50. The service match is included in fit.</li>
         <li>Within a fit range, Recommended adds a confidence penalty to the estimated trip and puts lower totals first. TravelTime estimates trips of up to three hours on a typical weekday morning in your chosen mode. If routing is unavailable, the app labels its straight-line comparison.</li>

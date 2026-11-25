@@ -164,7 +164,7 @@ function routingMetric(result, travelMode) {
 
 function reasons(result, options) {
   const {assessment, facility} = result;
-  const why = [`${evidenceLabels[assessment.kind]} for ${options.service}. Matched text: “${assessment.term}”.`];
+  const why = [`The service evidence matches “${assessment.term}”.`];
   const mode = routingMetric(result, options.travelMode);
   if (mode) why.push(`${mode[1]} by ${TRAVEL_MODES[options.travelMode].label.toLowerCase()} on a typical weekday morning.`);
   if (assessment.matchedEquipment?.length) why.push("Documented equipment: " + assessment.matchedEquipment.join(", ") + ".");
@@ -179,7 +179,6 @@ function reasons(result, options) {
     const missing = [...equipment, ...staff];
     if (missing.length) caveats.push("The reviewed text does not document " + missing.join(", ") + ". Ask the branch about these resources.");
   }
-  if (assessment.kind === "mention") caveats.push("The record mentions the service. Call this branch to confirm it offers the requested care.");
   if (options.serviceInfo?.urgent && facility.open24h !== true) caveats.push("Round-the-clock service at this branch is unconfirmed.");
   if (!Number.isFinite(facility.occupancy)) caveats.push("Current occupancy and available beds are unknown.");
   if (facility.lastVerified) caveats.push("Branch record last verified " + facility.lastVerified + ".");
@@ -238,13 +237,14 @@ function scoreBreakdown(result, options) {
     panel.append(table(["Personal priority", "Value", "Weight"], priorityParts.map(({criterion, value, weight}) =>
       [criterionLabels[criterion] || criterion, Number.isFinite(value) ? percent.format(value) : "Not recorded", percent.format(weight)]), "score-table", "Your ranked priorities"));
   }
+  if (result.projectedLoad) panel.append(projectionDetails(result, options));
   return panel;
 }
 
 function projectionDetails(result, options) {
   const load = result.projectedLoad;
-  if (!load) return null;
-  const panel = details("Expected workload comparison");
+  const panel = node("section", "", "card-section");
+  panel.append(node("h4", "Expected workload comparison"));
   panel.append(facts([
     [load.caseloadPredicted ? "Projected demand" : "Historical demand", `${number.format(load.caseload)} ${load.unit}/month`],
     [load.capacityPredicted ? "Modeled throughput" : "Reported throughput", `${number.format(load.capacity)} ${load.unit}/month`],
@@ -273,30 +273,37 @@ export function resultCard(result, index, options) {
   header.append(numberPin, heading);
   const beds = bedsOf(facility);
   const travel = routingMetric(result, options.travelMode);
-  const metrics = [
+  const primaryMetrics = [
     ["Documented fit (/100)", Number.isFinite(result.fitScore) ? number.format(result.fitScore) : "Unavailable"],
     ["Service confidence (/100)", number.format(assessment.confidence)],
-    ...(travel ? [travel] : []), ["Straight-line distance", number.format(result.distanceKm) + " km"],
-    [beds.label, beds.value],
+    travel ?? ["Straight-line distance", number.format(result.distanceKm) + " km"],
   ];
-  if (Number.isFinite(facility.occupancy)) metrics.push(["Recorded occupancy", percent.format(facility.occupancy)]);
-  card.append(header, facts(metrics, "card-metrics"));
+  const secondaryMetrics = [[beds.label, beds.value]];
+  if (travel) secondaryMetrics.unshift(["Straight-line distance", number.format(result.distanceKm) + " km"]);
+  if (Number.isFinite(facility.occupancy)) secondaryMetrics.push(["Recorded occupancy", percent.format(facility.occupancy)]);
+  const serviceEvidence = `${options.service} · ${evidenceLabels[assessment.kind]}.`;
+  const evidenceSummary = assessment.kind === "mention"
+    ? serviceEvidence + " Call this branch to confirm it offers the service." : serviceEvidence;
+  card.append(header, node("p", evidenceSummary, "card-evidence"),
+    facts(primaryMetrics, "card-metrics"), facts(secondaryMetrics, "card-metrics secondary-metrics"));
   if (options.sort === "recommended") {
     const units = travel ? "min equivalent" : "km equivalent";
-    card.append(node("p", `Fit range ${fitRanges[result.fitTier]} · confidence-adjusted total ${number.format(result.recommendedScore)} ${units}. Lower totals rank first within this range before any workload comparison.`, "card-note"));
+    card.append(node("p", `Fit range ${fitRanges[result.fitTier]} · confidence-adjusted total ${number.format(result.recommendedScore)} ${units}.`, "card-note"));
   }
   if (result.priorityParts?.length) card.append(node("p", "Personal criteria score " + (Number.isFinite(result.priorityScore) ? number.format(result.priorityScore) + "/100" : "unavailable"), "card-note"));
-  card.append(facts([["Address", addressOf(facility)], ["Phone", phoneOf(facility)], ["Hours", hoursOf(facility)]], "card-facts"));
-  card.append(node("p", "Call the branch to confirm the service, hours and current availability before travelling.", "card-note"));
-  const actions = links([["Directions", directionsTo(facility, options.origin, options.travelMode)], ["Facility website", facility.website]]);
+  const actions = links([["Directions", directionsTo(facility, options.origin, options.travelMode)]]);
+  const phone = node("span", text(facility.phone) ? "Phone " : "Phone not listed");
+  if (text(facility.phone)) phone.append(phoneOf(facility));
   const locate = node("button", "Show on map", "button-text");
   locate.type = "button";
   locate.addEventListener("click", () => options.onShowMap(index));
-  actions.prepend(locate);
-  card.append(actions, ...reasons(result, options));
-  const load = projectionDetails(result, options);
-  if (load) card.append(load);
-  card.append(sourceEvidence(result, options), scoreBreakdown(result, options));
+  actions.prepend(phone, locate);
+  const facilityDetails = details("Facility details");
+  facilityDetails.append(facts([["Address", addressOf(facility)], ["Hours", hoursOf(facility)]], "card-facts"));
+  const website = link("Facility website", facility.website);
+  if (website) facilityDetails.append(website);
+  facilityDetails.append(node("p", "Call the branch to confirm the service, hours and current availability before travelling.", "card-note"), ...reasons(result, options));
+  card.append(actions, facilityDetails, sourceEvidence(result, options), scoreBreakdown(result, options));
   return card;
 }
 
