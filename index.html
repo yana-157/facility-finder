@@ -7,7 +7,7 @@
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>Facility Finder</title>
   <link rel="stylesheet" href="./fonts/roboto.css">
-  <link rel="stylesheet" href="./styles.css?v=f5eaf163">
+  <link rel="stylesheet" href="./styles.css?v=8681bd7e">
   <script type="module" src="./app.js?v=50927b2b"></script>
 </head>
 <body>
@@ -76,20 +76,39 @@
         <section class="options-panel" aria-labelledby="options-title">
           <h2 id="options-title">Options</h2>
           <div class="options-layout">
-            <div class="option-basics">
-              <div class="fields-2">
-                <div class="field">
-                  <label for="severity">How urgent is this need?</label>
-                  <select id="severity" name="severity" disabled><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></select>
-                </div>
-                <div class="field">
-                  <label for="travel-mode">Travel mode</label>
-                  <select id="travel-mode" name="travelMode">
-                    <option value="driving" selected>Driving</option><option value="walking">Walking</option>
-                    <option value="cycling">Cycling</option><option value="public_transport">Public transport</option>
-                  </select>
-                </div>
-              </div>
+            <div class="field urgency-field">
+              <label for="severity">How urgent is this need?</label>
+              <select id="severity" name="severity" disabled><option value="routine">Routine</option><option value="urgent">Urgent</option><option value="emergency">Emergency</option></select>
+            </div>
+            <div class="field travel-field">
+              <label for="travel-mode">Travel mode</label>
+              <select id="travel-mode" name="travelMode">
+                <option value="driving" selected>Driving</option><option value="walking">Walking</option>
+                <option value="cycling">Cycling</option><option value="public_transport">Public transport</option>
+              </select>
+            </div>
+            <div class="workload-option">
+              <label class="toggle-label"><input class="toggle" id="projected-load" name="projected-load" type="checkbox" role="switch" autocomplete="off" aria-describedby="load-help"><span class="toggle-track" aria-hidden="true"></span>Ease pressure on busy facilities</label>
+              <p id="load-help" class="caption">Compare expected monthly workload at nearby facilities in the same fit range.</p>
+            </div>
+            <div class="equity-control">
+              <label class="toggle-label"><input class="toggle" id="consider-equity" type="checkbox" role="switch" aria-details="equity-explanation"><span class="toggle-track" aria-hidden="true"></span>Consider equity score</label>
+              <details class="equity-explanation" id="equity-explanation">
+                <summary>What's that?</summary>
+                <p id="equity-help">Women and people from marginalized groups can receive worse care. The equity score combines patient-reported respect and clinical outcomes to help choose between similar hospitals.</p>
+              </details>
+            </div>
+          </div>
+          <p class="field-error" id="search-error" role="alert" hidden></p>
+          <div class="options-footer">
+            <div class="advanced-settings">
+              <label class="toggle-label"><input class="toggle" id="advanced-options" type="checkbox" role="switch" aria-controls="priority-controls"><span class="toggle-track" aria-hidden="true"></span>Advanced options</label>
+              <section id="priority-controls" aria-labelledby="priority-title" hidden>
+                <h3 id="priority-title">My priorities</h3>
+                <p class="caption">Choose the criteria that matter to you and put them in order. Select Ranked criteria under Sort by to apply them.</p>
+                <div id="priority-list"></div>
+                <p class="caption" id="priority-summary" role="status"></p>
+              </section>
               <details class="expander" id="fit-settings">
                 <summary>Results and fit settings</summary>
                 <div class="range-field result-limit">
@@ -121,32 +140,9 @@
                 <p id="fit-weight-status" class="caption" role="status" hidden></p>
               </details>
             </div>
-            <div class="option-preferences">
-              <label class="toggle-label"><input class="toggle" id="advanced-options" type="checkbox" role="switch" aria-controls="priority-controls"><span class="toggle-track" aria-hidden="true"></span>Advanced options</label>
-              <section id="priority-controls" aria-labelledby="priority-title" hidden>
-                <h3 id="priority-title">My priorities</h3>
-                <p class="caption">Choose the criteria that matter to you and put them in order. Select Ranked criteria under Sort by to apply them.</p>
-                <div id="priority-list"></div>
-                <p class="caption" id="priority-summary" role="status"></p>
-              </section>
-              <div class="option-pair">
-                <div>
-                  <label class="toggle-label"><input class="toggle" id="projected-load" name="projected-load" type="checkbox" role="switch" autocomplete="off" aria-describedby="load-help"><span class="toggle-track" aria-hidden="true"></span>Ease pressure on busy facilities</label>
-                  <p id="load-help" class="caption">Compare expected monthly workload at nearby facilities in the same fit range.</p>
-                </div>
-                <div class="equity-control">
-                  <label class="toggle-label"><input class="toggle" id="consider-equity" type="checkbox" role="switch" aria-details="equity-explanation"><span class="toggle-track" aria-hidden="true"></span>Consider equity score</label>
-                  <details class="equity-explanation" id="equity-explanation">
-                    <summary>What's that?</summary>
-                    <p id="equity-help">Women and people from marginalized groups can receive worse care. The equity score combines patient-reported respect and clinical outcomes to help choose between similar hospitals.</p>
-                  </details>
-                </div>
-              </div>
-            </div>
+            <button class="button button-primary" id="search-button" type="submit" disabled>Find facilities</button>
           </div>
         </section>
-        <p class="field-error" id="search-error" role="alert" hidden></p>
-        <button class="button button-primary" id="search-button" type="submit" disabled>Find facilities</button>
       </div>
     </form>
 
