@@ -7,10 +7,10 @@
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>Find a health facility · Facility Finder</title>
   <link rel="stylesheet" href="./fonts/roboto.css">
-  <link rel="stylesheet" href="./styles.css?v=d512378c">
+  <link rel="stylesheet" href="./styles.css?v=c5c500e2">
   <link rel="stylesheet" href="./results.css?v=92da8587">
   <link rel="stylesheet" href="./directory.css?v=89f815fa">
-  <script type="module" src="./app.js?v=ee6e64e7"></script>
+  <script type="module" src="./app.js?v=010960a8"></script>
 </head>
 <body>
   <a class="skip-link" href="#finder">Skip to care search</a>
@@ -136,12 +136,6 @@
                 </div>
               </fieldset>
               <p id="fit-weight-status" class="caption" role="status" hidden></p>
-              <details class="expander" id="priority-controls">
-                <summary>Custom result order</summary>
-                <p class="caption">Give your most important criterion rank 1. Facility fit uses the sliders above. Choose Ranked criteria under Sort by to apply your order.</p>
-                <div id="priority-list"></div>
-                <p class="caption" id="priority-summary" role="status"></p>
-              </details>
             </details>
             <button class="button button-primary" id="search-button" type="submit" disabled>Find facilities<span class="action-arrow" aria-hidden="true">→</span></button>
           </div>
@@ -168,18 +162,25 @@
         <div id="results-controls" class="results-controls" hidden>
           <div class="field">
             <label for="sort">Sort by</label>
-            <select id="sort">
-              <option value="recommended">Recommended</option><option id="travel-sort" value="distance">Fastest drive</option>
+            <select id="sort" autocomplete="off" aria-controls="priority-controls result-list">
+              <option value="recommended" selected>Recommended</option><option id="travel-sort" value="distance">Fastest drive</option>
               <option value="straightLine" id="geographic-sort">Distance (nearest first)</option>
               <option value="fit">Fit (highest first)</option><option value="beds">Capacity (most beds first)</option>
-              <option value="occupancy">Occupancy (lowest first)</option><option id="sort-priorities" value="priorities" hidden>Ranked criteria (best match first)</option>
+              <option value="occupancy">Occupancy (lowest first)</option>
               <option value="confidence">Service confidence</option><option value="name">Name</option>
+              <option value="priorities">Custom order</option>
             </select>
           </div>
           <div class="range-field result-limit">
             <label for="limit">Results to show</label><output id="limit-value" for="limit">5</output>
             <input type="range" id="limit" min="1" max="10" step="1" value="5">
           </div>
+          <fieldset id="priority-controls" aria-describedby="priority-help" hidden>
+            <legend>Rank your priorities</legend>
+            <p class="caption" id="priority-help">Give your most important criterion rank 1. Facility fit uses your weights from Advanced options.</p>
+            <div id="priority-list"></div>
+            <p class="caption" id="priority-summary" role="status"></p>
+          </fieldset>
         </div>
         <div id="result-list" class="result-list"></div>
       </section>
@@ -200,7 +201,7 @@
       <ul>
         <li>Every sort requires service confidence of at least 25/100 and excludes branches with a documented fit of zero. Recommended also requires a known fit score. It shows scores of 60–100 first, then 55 to under 60, 50 to under 55, and positive scores under 50. The service match is included in fit.</li>
         <li>Within a fit range, Recommended adds a confidence penalty to the estimated trip and puts lower totals first. TravelTime estimates trips of up to three hours on a typical weekday morning in your chosen mode. If routing is unavailable, the app labels its straight-line comparison.</li>
-        <li>Ranked criteria applies your chosen priorities in order. Ease pressure on busy facilities can promote a nearby routine-care alternative in the same fit range when the workload data are comparable and the confidence-adjusted detour is small. Equity comparisons require paired evidence for the same branch and service.</li>
+        <li>Choose Custom order above the results to rank your own priorities. Ease pressure on busy facilities can promote a nearby routine-care alternative in the same fit range when the workload data are comparable and the confidence-adjusted detour is small. Equity comparisons require paired evidence for the same branch and service.</li>
       </ul>
       <p><a href="./methods.html">Read the full data and methods report</a></p>
       <div class="methods-links">

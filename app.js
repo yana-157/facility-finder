@@ -419,10 +419,7 @@ function updateGroups() {
 }
 
 function syncPriorities() {
-  const enabled = priorityOrder.length > 0;
-  if (!enabled && sort.value === "priorities") sort.value = "recommended";
-  get("sort-priorities").hidden = !enabled;
-  get("sort-priorities").disabled = !enabled;
+  get("priority-controls").hidden = sort.value !== "priorities";
   for (const key of Object.keys(priorityLabels)) {
     const order = get("order-" + key);
     const position = priorityOrder.indexOf(key);
@@ -447,6 +444,10 @@ function buildPriorityControls() {
       const previous = priorityOrder.indexOf(key);
       if (previous !== -1) priorityOrder.splice(previous, 1);
       if (order.value !== "") priorityOrder.splice(Number(order.value), 0, key);
+      if (!priorityOrder.length) {
+        sort.value = "recommended";
+        sort.focus();
+      }
       syncPriorities();
     });
     row.append(label, order);
@@ -472,7 +473,10 @@ get("adjust-fit").addEventListener("click", () => {
   weightInputs.capability.focus();
 });
 severity.addEventListener("change", () => { updateComparisonHelp(); rerank(); });
-sort.addEventListener("change", () => { updateComparisonHelp(); rerank(); });
+sort.addEventListener("change", () => {
+  if (sort.value === "priorities" && !priorityOrder.length) priorityOrder.push("fit");
+  syncPriorities();
+});
 for (const control of [equity, considerLoad]) control.addEventListener("change", rerank);
 for (const control of [limit, ...Object.values(weightInputs)]) {
   const display = get(control.id + "-value");
